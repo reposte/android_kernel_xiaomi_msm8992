@@ -381,6 +381,7 @@ FRANKEN_CFLAGS := -march=armv8-a+crc+crypto -mtune=cortex-a57.cortex-a53 -mcpu=c
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
+		   -mcpu=cortex-a57.cortex-a53 -mtune=cortex-a57.cortex-a53 \
 		   -Wno-format-security \
 		   -std=gnu89 $(FRANKEN_CFLAGS)
 
