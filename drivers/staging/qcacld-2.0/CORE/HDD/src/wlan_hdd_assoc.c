@@ -147,7 +147,7 @@ v_VOID_t hdd_connSetAuthenticated( hdd_adapter_t *pAdapter, v_U8_t authState )
    pHddStaCtx->conn_info.uIsAuthenticated = authState;
 
    /* Check is pending ROC request or not when auth state changed */
-   schedule_delayed_work(&pHddCtx->rocReqWork, 0);
+   schedule_work(&pHddCtx->rocReqWork);
 }
 
 v_VOID_t hdd_connSetConnectionState( hdd_adapter_t *pAdapter,
@@ -162,7 +162,7 @@ v_VOID_t hdd_connSetConnectionState( hdd_adapter_t *pAdapter,
    pHddStaCtx->conn_info.connState = connState;
 
    /* Check is pending ROC request or not when connection state changed */
-   schedule_delayed_work(&pHddCtx->rocReqWork, 0);
+   schedule_work(&pHddCtx->rocReqWork);
 }
 
 // returns FALSE if not connected.
@@ -968,6 +968,9 @@ static eHalStatus hdd_DisConnectHandler( hdd_adapter_t *pAdapter, tCsrRoamInfo *
         if ((pHddCtx->isLoadInProgress != TRUE) &&
             (pHddCtx->isUnloadInProgress != TRUE))
         {
+            hddLog(VOS_TRACE_LEVEL_INFO_HIGH,
+                    "%s: sent disconnected event to nl80211",
+                    __func__);
 #ifdef WLAN_FEATURE_P2P_DEBUG
             if(pAdapter->device_mode == WLAN_HDD_P2P_CLIENT)
             {
@@ -1003,10 +1006,6 @@ static eHalStatus hdd_DisConnectHandler( hdd_adapter_t *pAdapter, tCsrRoamInfo *
                 {
                     cfg80211_disconnected(dev, WLAN_REASON_UNSPECIFIED, NULL, 0, GFP_KERNEL);
                  }
-                hddLog(VOS_TRACE_LEVEL_INFO_HIGH,
-                       FL("sent disconnected event to nl80211, reason code %d"),
-                          (eCSR_ROAM_LOSTLINK == roamStatus) ?
-                          pRoamInfo->reasonCode : WLAN_REASON_UNSPECIFIED);
             }
             //If the Device Mode is Station
             // and the P2P Client is Connected
@@ -1735,12 +1734,11 @@ static eHalStatus hdd_AssociationCompletionHandler( hdd_adapter_t *pAdapter, tCs
                 {
                     hddLog(LOG1, "%s ft_carrier_on is %d, sending connect "
                                  "indication", __FUNCTION__, ft_carrier_on);
-
-                    hdd_connect_result(dev, pRoamInfo->bssid,
-                                       pFTAssocReq, assocReqlen,
-                                       pFTAssocRsp, assocRsplen,
-                                       WLAN_STATUS_SUCCESS,
-                                       GFP_KERNEL);
+                    cfg80211_connect_result(dev, pRoamInfo->bssid,
+                                            pFTAssocReq, assocReqlen,
+                                            pFTAssocRsp, assocRsplen,
+                                            WLAN_STATUS_SUCCESS,
+                                            GFP_KERNEL);
                 }
             }
             else
@@ -1771,7 +1769,7 @@ static eHalStatus hdd_AssociationCompletionHandler( hdd_adapter_t *pAdapter, tCs
                                roamResult, roamStatus);
 
                         /* inform connect result to nl80211 */
-                        hdd_connect_result(dev, pRoamInfo->bssid,
+                        cfg80211_connect_result(dev, pRoamInfo->bssid,
                                 reqRsnIe, reqRsnLength,
                                 rspRsnIe, rspRsnLength,
                                 WLAN_STATUS_SUCCESS,
@@ -1964,15 +1962,15 @@ static eHalStatus hdd_AssociationCompletionHandler( hdd_adapter_t *pAdapter, tCs
             if ( eCSR_ROAM_RESULT_ASSOC_FAIL_CON_CHANNEL == roamResult )
             {
                if (pRoamInfo)
-                   hdd_connect_result(dev, pRoamInfo->bssid,
+                   cfg80211_connect_result ( dev, pRoamInfo->bssid,
                         NULL, 0, NULL, 0,
                         WLAN_STATUS_ASSOC_DENIED_UNSPEC,
-                        GFP_KERNEL);
+                        GFP_KERNEL );
                else
-                   hdd_connect_result(dev, pWextState->req_bssId,
+                   cfg80211_connect_result ( dev, pWextState->req_bssId,
                         NULL, 0, NULL, 0,
                         WLAN_STATUS_ASSOC_DENIED_UNSPEC,
-                        GFP_KERNEL);
+                        GFP_KERNEL );
             }
             else
             {
@@ -1987,16 +1985,16 @@ static eHalStatus hdd_AssociationCompletionHandler( hdd_adapter_t *pAdapter, tCs
                      * applications to reconnect the station with correct
                      * configuration.
                      */
-                    hdd_connect_result(dev, pRoamInfo->bssid,
+                    cfg80211_connect_result ( dev, pRoamInfo->bssid,
                         NULL, 0, NULL, 0,
                         isWep ? pRoamInfo->reasonCode :
                             WLAN_STATUS_UNSPECIFIED_FAILURE,
-                        GFP_KERNEL);
+                        GFP_KERNEL );
                 } else
-                    hdd_connect_result(dev, pWextState->req_bssId,
+                    cfg80211_connect_result ( dev, pWextState->req_bssId,
                         NULL, 0, NULL, 0,
                         WLAN_STATUS_UNSPECIFIED_FAILURE,
-                        GFP_KERNEL);
+                        GFP_KERNEL );
             }
         }
 

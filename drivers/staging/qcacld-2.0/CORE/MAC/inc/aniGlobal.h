@@ -366,7 +366,6 @@ typedef struct sLimTimers
     TX_TIMER           gLimPeriodicJoinProbeReqTimer;
     TX_TIMER           gLimDisassocAckTimer;
     TX_TIMER           gLimDeauthAckTimer;
-    TX_TIMER           g_lim_periodic_auth_retry_timer;
     // This timer is started when single shot NOA insert msg is sent to FW for scan in P2P GO mode
     TX_TIMER           gLimP2pSingleShotNoaInsertTimer;
     /* This timer is used to convert active channel to
@@ -564,8 +563,6 @@ typedef struct sAniSirLim
 
     // Heart-Beat interval value
     tANI_U32   gLimHeartBeatCount;
-    tSirMacAddr gLimHeartBeatApMac[2];
-    tANI_U8 gLimHeartBeatApMacIndex;
 
     // Statistics to keep track of no. beacons rcvd in heart beat interval
     tANI_U16            gLimHeartBeatBeaconStats[MAX_NO_BEACONS_PER_HEART_BEAT_INTERVAL];
@@ -1123,7 +1120,6 @@ typedef struct sMacOpenParameters
 
     bool      tx_chain_mask_cck;
     uint16_t  self_gen_frm_pwr;
-    bool force_target_assert_enabled;
 } tMacOpenParameters;
 
 typedef struct sHalMacStartParameters
@@ -1132,38 +1128,6 @@ typedef struct sHalMacStartParameters
     tDriverType  driverType;
 
 } tHalMacStartParameters;
-
-/**
- * struct vdev_type_nss - vdev type nss structure
- *
- * @sta: STA Nss value.
- * @sap: SAP Nss value.
- * @p2p_go: P2P GO Nss value.
- * @p2p_cli: P2P CLI Nss value.
- * @p2p_dev: P2P device Nss value.
- * @ibss: IBSS Nss value.
- * @tdls: TDLS Nss value.
- * @ocb: OCB Nss value.
- *
- * Holds the Nss values of different vdev types.
- */
-struct vdev_type_nss {
-    uint8_t sta;
-    uint8_t sap;
-    uint8_t p2p_go;
-    uint8_t p2p_cli;
-    uint8_t p2p_dev;
-    uint8_t ibss;
-    uint8_t tdls;
-    uint8_t ocb;
-};
-
-typedef enum
-{
-	LIM_AUTH_ACK_NOT_RCD,
-	LIM_AUTH_ACK_RCD_SUCCESS,
-	LIM_AUTH_ACK_RCD_FAILURE,
-} t_auth_ack_status;
 
 // -------------------------------------------------------------------
 /// MAC Sirius parameter structure
@@ -1246,13 +1210,7 @@ typedef struct sAniSirGlobal
     void *readyToExtWoWContext;
 #endif
     uint32_t fine_time_meas_cap;
-
-    /* per band chain mask support */
-    bool per_band_chainmask_supp;
-    struct vdev_type_nss vdev_type_nss_2g;
-    struct vdev_type_nss vdev_type_nss_5g;
-    t_auth_ack_status auth_ack_status;
-    bool first_scan_done;
+    int8_t first_scan_bucket_threshold;
 } tAniSirGlobal;
 
 typedef enum

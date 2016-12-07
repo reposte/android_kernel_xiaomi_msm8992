@@ -872,26 +872,6 @@ int hdd_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
    //Get TL AC corresponding to Qdisc queue index/AC.
    ac = hdd_QdiscAcToTlAC[skb->queue_mapping];
 
-#ifdef IPA_OFFLOAD
-   if(!(NBUF_OWNER_ID(skb) == IPA_NBUF_OWNER_ID)) {
-#endif
-
-   /* Check if the buffer has enough header room */
-   skb = skb_unshare(skb, GFP_ATOMIC);
-   if (!skb)
-       goto drop_pkt;
-
-   if (skb_headroom(skb) < dev->hard_header_len) {
-       struct sk_buff *tmp;
-       tmp = skb;
-       skb = skb_realloc_headroom(tmp, dev->hard_header_len);
-       dev_kfree_skb(tmp);
-       if (!skb)
-           goto drop_pkt;
-   }
-#ifdef IPA_OFFLOAD
-   }
-#endif
    //user priority from IP header, which is already extracted and set from
    //select_queue call back function
    up = skb->priority;
@@ -1043,9 +1023,7 @@ VOS_STATUS hdd_Ibss_GetStaId(hdd_station_ctx_t *pHddStaCtx, v_MACADDR_t *pMacAdd
  */
 static void __hdd_tx_timeout(struct net_device *dev)
 {
-#if defined( WLAN_DEBUG )
    hdd_adapter_t *pAdapter =  WLAN_HDD_GET_PRIV_PTR(dev);
-#endif
    struct netdev_queue *txq;
    int i = 0;
 
@@ -1800,14 +1778,11 @@ VOS_STATUS hdd_rx_packet_cbk(v_VOID_t *vosContext,
    while (NULL != skb) {
       skb_next = skb->next;
 
-      if (((pHddStaCtx->conn_info.proxyARPService) &&
-         cfg80211_is_gratuitous_arp_unsolicited_na(skb)) ||
-         vos_is_load_unload_in_progress(VOS_MODULE_ID_VOSS, NULL)) {
+      if ((pHddStaCtx->conn_info.proxyARPService) &&
+         cfg80211_is_gratuitous_arp_unsolicited_na(skb)) {
             ++pAdapter->hdd_stats.hddTxRxStats.rxDropped;
             VOS_TRACE(VOS_MODULE_ID_HDD_DATA, VOS_TRACE_LEVEL_INFO,
-               "%s: Dropping HS 2.0 Gratuitous ARP or Unsolicited NA"
-               " else dropping as Driver load/unload is in progress",
-               __func__);
+               "%s: Dropping HS 2.0 Gratuitous ARP or Unsolicited NA", __func__);
             kfree_skb(skb);
 
             skb = skb_next;

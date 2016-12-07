@@ -704,13 +704,21 @@ tANI_BOOLEAN smeProcessScanQueue(tpAniSirGlobal pMac)
             if (pEntry) {
                 pCommand = GET_BASE_ADDR( pEntry, tSmeCmd, Link );
                 if (pSmeCommand != NULL) {
-                    /* if there is an active SME command, do not process
-                     * the pending scan cmd
-                     */
-                    smsLog(pMac, LOGE, "SME scan cmd is pending on session %d",
-                           pSmeCommand->sessionId);
-                    status = eANI_BOOLEAN_FALSE;
-                    goto end;
+                    /*
+                    * if scan is running on one interface and SME receives
+                    * the next command on the same interface then
+                    * dont the allow the command to be queued to
+                    * smeCmdPendingList. If next scan is allowed on
+                    * the same interface the CSR state machine will
+                    * get screwed up.
+                    */
+                     if (pSmeCommand->sessionId == pCommand->sessionId) {
+                          smsLog(pMac, LOGE,
+                                "SME command is pending on session %d",
+                                pSmeCommand->sessionId);
+                            status = eANI_BOOLEAN_FALSE;
+                          goto end;
+                      }
                 }
                 //We cannot execute any command in wait-for-key state until setKey is through.
                 if (CSR_IS_WAIT_FOR_KEY( pMac, pCommand->sessionId))
@@ -817,25 +825,6 @@ sme_process_cmd:
                 if( CSR_IS_WAIT_FOR_KEY( pMac, pCommand->sessionId ) &&
                     !CSR_IS_DISCONNECT_COMMAND( pCommand ) )
                 {
-                    if (CSR_IS_CLOSE_SESSION_COMMAND(pCommand)) {
-                        tSmeCmd *sme_cmd = NULL;
-
-                        smsLog(pMac, LOGE,
-                                 FL("SessionId %d: close session command issued while waiting for key, issue disconnect first"),
-                                 pCommand->sessionId);
-                        status = csr_prepare_disconnect_command(pMac,
-                                             pCommand->sessionId, &sme_cmd);
-                        if (HAL_STATUS_SUCCESS(status) && sme_cmd) {
-                            csrLLLock(&pMac->sme.smeCmdPendingList);
-                            csrLLInsertHead(&pMac->sme.smeCmdPendingList,
-                                              &sme_cmd->Link, LL_ACCESS_NOLOCK);
-                            pEntry = csrLLPeekHead(&pMac->sme.smeCmdPendingList,
-                                                      LL_ACCESS_NOLOCK);
-                            csrLLUnlock(&pMac->sme.smeCmdPendingList);
-                            goto sme_process_cmd;
-                        }
-                    }
-
                     if( !CSR_IS_SET_KEY_COMMAND( pCommand ) )
                     {
                         csrLLUnlock( &pMac->sme.smeCmdActiveList );
@@ -2931,7 +2920,7 @@ eHalStatus sme_ProcessMsg(tHalHandle hHal, vos_msg_t* pMsg)
 #ifdef FEATURE_WLAN_EXTSCAN
           case eWNI_SME_EXTSCAN_FULL_SCAN_RESULT_IND:
           {
-		if (pMac->sme.pExtScanIndCb) {
+                if (pMac->sme.pExtScanIndCb) {
                     pMac->sme.pExtScanIndCb(pMac->hHdd,
                                             eSIR_EXTSCAN_FULL_SCAN_RESULT_IND,
                                             pMsg->bodyptr);
@@ -2958,13 +2947,6 @@ eHalStatus sme_ProcessMsg(tHalHandle hHal, vos_msg_t* pMsg)
 #endif
           case eWNI_SME_FW_DUMP_IND:
                sme_process_fw_mem_dump_rsp(pMac, pMsg);
-               break;
-          case eWNI_SME_LOST_LINK_INFO_IND:
-               if (pMac->sme.lost_link_info_cb) {
-                   pMac->sme.lost_link_info_cb(pMac->hHdd,
-                             (struct sir_lost_link_info *)pMsg->bodyptr);
-               }
-               vos_mem_free(pMsg->bodyptr);
                break;
           default:
 
@@ -4349,7 +4331,6 @@ eHalStatus sme_GetConfigParam(tHalHandle hHal, tSmeConfigParams *pParam)
       }
       pParam->fScanOffload = pMac->fScanOffload;
       pParam->fP2pListenOffload = pMac->fP2pListenOffload;
-      pParam->pnoOffload = pMac->pnoOffload;
       pParam->max_intf_count = pMac->sme.max_intf_count;
       pParam->enableSelfRecovery = pMac->sme.enableSelfRecovery;
       pParam->fine_time_meas_cap = pMac->fine_time_meas_cap;
@@ -15230,33 +15211,3 @@ bool smeNeighborRoamIsHandoffInProgress(tHalHandle hHal, tANI_U8 sessionId)
 {
 	return csrNeighborRoamIsHandoffInProgress(PMAC_STRUCT(hHal), sessionId);
 }
-
-/**
- * sme_set_lost_link_info_cb() - plug in callback function for receiving
- * lost link info
- * @hal: HAL handle
- * @cb: callback function
- *
- * Return: HAL status
- */
-eHalStatus sme_set_lost_link_info_cb(tHalHandle hal,
-				     void (*cb)(void *,
-				     struct sir_lost_link_info *))
-{
-	eHalStatus status = eHAL_STATUS_SUCCESS;
-	tpAniSirGlobal mac = PMAC_STRUCT(hal);
-
-	status = sme_AcquireGlobalLock(&mac->sme);
-	if (eHAL_STATUS_SUCCESS == status) {
-		mac->sme.lost_link_info_cb = cb;
-		VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_INFO,
-			  "%s: set lost link info callback", __func__);
-		sme_ReleaseGlobalLock(&mac->sme);
-	} else {
-		VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_ERROR,
-			  "%s: sme_AcquireGlobalLock error status %d",
-			  __func__, status);
-	}
-	return status;
-}
-

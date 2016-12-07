@@ -1270,7 +1270,7 @@ typedef struct tagCsrConfigParam
     tANI_BOOLEAN obssEnabled;
 
     v_U16_t    pkt_err_disconn_th;
-    tANI_BOOLEAN sendDeauthBeforeCon;
+    int8_t    first_scan_bucket_threshold;
 }tCsrConfigParam;
 
 //Tush
@@ -1347,10 +1347,6 @@ typedef struct tagCsrRoamInfo
     tANI_U16 tsmRoamDelay;
     tSirEseBcnReportRsp *pEseBcnReportRsp;
 #endif /* FEATURE_WLAN_ESE_UPLOAD */
-#endif
-
-#ifdef WLAN_FEATURE_VOWIFI_11R
-    tANI_BOOLEAN is11rAssoc;
 #endif
     void* pRemainCtx;
     tANI_U32 rxChan;

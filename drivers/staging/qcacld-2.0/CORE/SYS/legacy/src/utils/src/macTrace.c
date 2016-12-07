@@ -523,7 +523,6 @@ tANI_U8* macTraceGetSmeMsgString( tANI_U16 smeMsg )
 #ifdef WLAN_FEATURE_ROAM_OFFLOAD
         CASE_RETURN_STRING(eWNI_SME_ROAM_OFFLOAD_SYNCH_IND);
 #endif
-        CASE_RETURN_STRING(eWNI_SME_LOST_LINK_INFO_IND);
         default:
             return( (tANI_U8*)"UNKNOWN" );
             break;
@@ -884,8 +883,8 @@ tANI_U8* macTraceGetLimMsgString( tANI_U16 limMsg )
         CASE_RETURN_STRING(SIR_LIM_DISASSOC_ACK_TIMEOUT);
         CASE_RETURN_STRING(SIR_LIM_DEAUTH_ACK_TIMEOUT);
         CASE_RETURN_STRING(SIR_LIM_PERIODIC_JOIN_PROBE_REQ_TIMEOUT);
-        CASE_RETURN_STRING(SIR_LIM_AUTH_RETRY_TIMEOUT);
         CASE_RETURN_STRING(SIR_LIM_MSG_TYPES_END);
+
         default:
             return( (tANI_U8*)"UNKNOWN" );
             break;

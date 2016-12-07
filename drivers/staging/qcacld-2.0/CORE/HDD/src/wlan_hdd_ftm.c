@@ -765,8 +765,6 @@ err_adapter_open_failure:
     return VOS_STATUS_E_FAILURE;
 }
 
-
-
 int wlan_hdd_ftm_close(hdd_context_t *pHddCtx)
 {
     VOS_STATUS vosStatus;
@@ -895,10 +893,6 @@ static int wlan_hdd_ftm_start(hdd_context_t *pHddCtx)
        goto err_status_failure;
     }
 
-
-    VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
-            "%s: MAC correctly started",__func__);
-
     if (hdd_ftm_service_registration(pHddCtx)) {
        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                 "%s: failed", __func__);
@@ -928,13 +922,13 @@ int hdd_ftm_start(hdd_context_t *pHddCtx)
 
 static int wlan_ftm_stop(hdd_context_t *pHddCtx)
 {
-    if (pHddCtx->ftm.ftm_state != WLAN_FTM_STARTED) {
-       hddLog(LOGP, FL("FTM has not started. No need to stop"));
-       return VOS_STATUS_E_FAILURE;
-    }
+	if (pHddCtx->ftm.ftm_state != WLAN_FTM_STARTED) {
+		hddLog(LOGP, FL("FTM has not started. No need to stop"));
+		return VOS_STATUS_E_FAILURE;
+	}
 
-    WDA_stop(pHddCtx->pvosContext, HAL_STOP_TYPE_RF_KILL);
-    return WLAN_FTM_SUCCESS;
+	WDA_stop(pHddCtx->pvosContext, HAL_STOP_TYPE_RF_KILL);
+	return WLAN_FTM_SUCCESS;
 }
 
 #if  defined(QCA_WIFI_FTM)

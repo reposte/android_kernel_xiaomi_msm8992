@@ -709,11 +709,6 @@ void
 ol_txrx_pdev_detach(ol_txrx_pdev_handle pdev, int force)
 {
     int i;
-    /*checking to ensure txrx pdev structure is not NULL */
-    if (!pdev) {
-        TXRX_PRINT(TXRX_PRINT_LEVEL_ERR, "NULL pdev passed to %s\n", __func__);
-        return;
-    }
     /* preconditions */
     TXRX_ASSERT2(pdev);
 
@@ -1881,21 +1876,6 @@ ol_txrx_fw_stats_handler(
                     int limit;
 
                     limit = sizeof(struct rx_remote_buffer_mgmt_stats);
-                    if (req->base.copy.byte_limit < limit) {
-                        limit = req->base.copy.byte_limit;
-                    }
-                    buf = req->base.copy.buf + req->offset;
-                    adf_os_mem_copy(buf, stats_data, limit);
-                }
-                break;
-
-            case HTT_DBG_STATS_TXBF_MUSU_NDPA_PKT:
-
-                bytes = sizeof(struct rx_txbf_musu_ndpa_pkts_stats);
-                if (req->base.copy.buf) {
-                    int limit;
-
-                    limit = sizeof(struct rx_txbf_musu_ndpa_pkts_stats);
                     if (req->base.copy.byte_limit < limit) {
                         limit = req->base.copy.byte_limit;
                     }

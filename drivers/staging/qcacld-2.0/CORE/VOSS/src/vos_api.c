@@ -463,8 +463,6 @@ VOS_STATUS vos_open( v_CONTEXT_t *pVosContext, v_SIZE_t hddContextSize )
    macOpenParms.IsRArateLimitEnabled = pHddCtx->cfg_ini->IsRArateLimitEnabled;
 #endif
 
-   macOpenParms.force_target_assert_enabled =
-               pHddCtx->cfg_ini->crash_inject_enabled;
    macOpenParms.apMaxOffloadPeers = pHddCtx->cfg_ini->apMaxOffloadPeers;
 
    macOpenParms.apMaxOffloadReorderBuffs =
@@ -484,6 +482,7 @@ VOS_STATUS vos_open( v_CONTEXT_t *pVosContext, v_SIZE_t hddContextSize )
     macOpenParms.ucTxPartitionBase = pHddCtx->cfg_ini->IpaUcTxPartitionBase;
 #endif /* IPA_UC_OFFLOAD */
 
+    macOpenParms.tx_chain_mask_cck = pHddCtx->cfg_ini->tx_chain_mask_cck;
     macOpenParms.self_gen_frm_pwr = pHddCtx->cfg_ini->self_gen_frm_pwr;
 
    vStatus = WDA_open( gpVosContext, gpVosContext->pHDDContext,
@@ -1329,42 +1328,6 @@ void vos_set_logp_in_progress(VOS_MODULE_ID moduleId, v_U8_t value)
       return;
    }
    pHddCtx->isLogpInProgress = value;
-}
-
-/**
- * vos_is_unload_in_progress() - check if driver unload is in
- * progress
- *
- * @moduleContext: the input module context pointer
- * @moduleId: the module ID who's context pointer is input in
- *        moduleContext
- *
- * Return: true  - unload in progress
- *         false - unload not in progress/error
- */
-
-
-v_BOOL_t vos_is_unload_in_progress(VOS_MODULE_ID moduleId,
-				 v_VOID_t *moduleContext)
-{
-	hdd_context_t *hdd_ctx = NULL;
-
-	if (gpVosContext == NULL) {
-		VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-		"%s: global voss context is NULL", __func__);
-		VOS_ASSERT(0);
-		return 0;
-	}
-	hdd_ctx = (hdd_context_t *)vos_get_context(VOS_MODULE_ID_HDD,
-						   gpVosContext);
-	if (NULL == hdd_ctx) {
-		VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-		"%s: hdd context is NULL", __func__);
-		VOS_ASSERT(0);
-		return 0;
-	}
-
-	return hdd_ctx->isUnloadInProgress;
 }
 
 v_U8_t vos_is_load_unload_in_progress(VOS_MODULE_ID moduleId, v_VOID_t *moduleContext)
@@ -2533,7 +2496,6 @@ void vos_trigger_recovery(void)
 	pVosContextType vos_context;
 	tp_wma_handle wma_handle;
 	VOS_STATUS status = VOS_STATUS_SUCCESS;
-	void *runtime_context = NULL;
 
 	vos_context = vos_get_global_context(VOS_MODULE_ID_VOSS, NULL);
 	if (!vos_context) {
@@ -2550,8 +2512,7 @@ void vos_trigger_recovery(void)
 		return;
 	}
 
-	runtime_context = vos_runtime_pm_prevent_suspend_init("vos_recovery");
-	vos_runtime_pm_prevent_suspend(runtime_context);
+	vos_runtime_pm_prevent_suspend();
 
 	wma_crash_inject(wma_handle, RECOVERY_SIM_SELF_RECOVERY, 0);
 
@@ -2573,7 +2534,7 @@ void vos_trigger_recovery(void)
 	}
 
 out:
-	vos_runtime_pm_allow_suspend(runtime_context);
+	vos_runtime_pm_allow_suspend();
 }
 
 v_U64_t vos_get_monotonic_boottime(void)

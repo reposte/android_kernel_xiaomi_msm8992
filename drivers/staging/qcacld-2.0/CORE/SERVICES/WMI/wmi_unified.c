@@ -966,7 +966,7 @@ void __wmi_control_rx(struct wmi_unified *wmi_handle, wmi_buf_t evt_buf)
 	}
 
 #ifdef FEATURE_WLAN_D0WOW
-	if (wmi_get_d0wow_flag(wmi_handle))
+	if (wmi_handle->in_d0wow)
 		pr_debug("%s: WMI event ID is 0x%x\n", __func__, id);
 #endif
 
@@ -1196,18 +1196,6 @@ void wmi_set_target_suspend(wmi_unified_t wmi_handle, A_BOOL val)
 	adf_os_atomic_set(&wmi_handle->is_target_suspended, val);
 }
 
-/**
- * wmi_set_tgt_assert() - set target assert configuration
- * @wmi_handle: Pointer to WMI handle
- * @val: Target assert config value
- *
- * Return: none
- */
-void wmi_set_tgt_assert(wmi_unified_t wmi_handle, bool val)
-{
-	wmi_handle->tgt_force_assert_enable = val;
-}
-
 #ifdef FEATURE_RUNTIME_PM
 void wmi_set_runtime_pm_inprogress(wmi_unified_t wmi_handle, A_BOOL val)
 {
@@ -1218,19 +1206,6 @@ void wmi_set_runtime_pm_inprogress(wmi_unified_t wmi_handle, A_BOOL val)
 #ifdef FEATURE_WLAN_D0WOW
 void wmi_set_d0wow_flag(wmi_unified_t wmi_handle, A_BOOL flag)
 {
-	tp_wma_handle wma = wmi_handle->scn_handle;
-	struct ol_softc *scn =
-		vos_get_context(VOS_MODULE_ID_HIF, wma->vos_context);
-
-	adf_os_atomic_set(&scn->hif_sc->in_d0wow, flag);
-}
-
-A_BOOL wmi_get_d0wow_flag(wmi_unified_t wmi_handle)
-{
-	tp_wma_handle wma = wmi_handle->scn_handle;
-	struct ol_softc *scn =
-		vos_get_context(VOS_MODULE_ID_HIF, wma->vos_context);
-
-	return adf_os_atomic_read(&scn->hif_sc->in_d0wow);
+	wmi_handle->in_d0wow = flag;
 }
 #endif

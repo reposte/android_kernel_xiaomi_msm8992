@@ -49,7 +49,6 @@
 #include <aniGlobal.h>
 #include <halTypes.h>
 #include <net/ieee80211_radiotap.h>
-#include <vos_sched.h>
 
 #ifdef IPA_OFFLOAD
 #include <wlan_hdd_ipa.h>
@@ -345,26 +344,6 @@ int hdd_softap_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
    ac = hdd_QdiscAcToTlAC[skb->queue_mapping];
    ++pAdapter->hdd_stats.hddTxRxStats.txXmitClassifiedAC[ac];
 
-#if defined (IPA_OFFLOAD)
-   if(!(NBUF_OWNER_ID(skb) == IPA_NBUF_OWNER_ID)) {
-#endif
-   // Check if the buffer has enough header room
-   skb = skb_unshare(skb, GFP_ATOMIC);
-   if (!skb)
-       goto drop_pkt;
-
-   if (skb_headroom(skb) < dev->hard_header_len) {
-       struct sk_buff *tmp;
-       tmp = skb;
-       skb = skb_realloc_headroom(tmp, dev->hard_header_len);
-       dev_kfree_skb(tmp);
-       if (!skb)
-           goto drop_pkt;
-   }
-#if defined (IPA_OFFLOAD)
-   }
-#endif
-
    wlan_hdd_log_eapol(skb, WIFI_EVENT_DRIVER_EAPOL_FRAME_TRANSMIT_REQUESTED);
 
 #ifdef QCA_PKT_PROTO_TRACE
@@ -536,51 +515,24 @@ xmit_end:
    return status;
 }
 
-/**
- * __hdd_softap_tx_timeout() - softap tx timeout
- * @dev: pointer to net_device
- *
- * Function called by OS if there is any timeout during transmission.
- * Since HDD simply enqueues packet and returns control to OS right away,
- * this would never be invoked.
- *
- * Return: none
- */
-static void __hdd_softap_tx_timeout(struct net_device *dev)
-{
-   hdd_adapter_t *adapter = WLAN_HDD_GET_PRIV_PTR(dev);
-   hdd_context_t *hdd_ctx;
+/**============================================================================
+  @brief hdd_softap_tx_timeout() - Function called by OS if there is any
+  timeout during transmission. Since HDD simply enqueues packet
+  and returns control to OS right away, this would never be invoked
 
-   VOS_TRACE( VOS_MODULE_ID_HDD_SAP_DATA, VOS_TRACE_LEVEL_ERROR,
-      "%s: Transmission timeout occurred", __func__);
-
-   hdd_ctx = WLAN_HDD_GET_CTX(adapter);
-   if (hdd_ctx->isLogpInProgress) {
-       VOS_TRACE(VOS_MODULE_ID_HDD_SAP_DATA, VOS_TRACE_LEVEL_INFO,
-                 "%s: LOGP in Progress. Ignore!!!", __func__);
-       return;
-   }
-
-   /*
-    * Getting here implies we disabled the TX queues for too long. Queues are
-    * disabled either because of disassociation or low resource scenarios. In
-    * case of disassociation it is ok to ignore this. But if associated, we have
-    * do possible recovery here.
-    */
-}
-
-/**
- * hdd_softap_tx_timeout() - SSR wrapper for __hdd_softap_tx_timeout
- * @dev: pointer to net_device
- *
- * Return: none
- */
+  @param dev : [in] pointer to Libra network device
+  @return    : None
+  ===========================================================================*/
 void hdd_softap_tx_timeout(struct net_device *dev)
 {
-	vos_ssr_protect(__func__);
-	__hdd_softap_tx_timeout(dev);
-	vos_ssr_unprotect(__func__);
+   VOS_TRACE( VOS_MODULE_ID_HDD_SAP_DATA, VOS_TRACE_LEVEL_ERROR,
+      "%s: Transmission timeout occurred", __func__);
+   //Getting here implies we disabled the TX queues for too long. Queues are
+   //disabled either because of disassociation or low resource scenarios. In
+   //case of disassociation it is ok to ignore this. But if associated, we have
+   //do possible recovery here
 }
+
 
 /**============================================================================
   @brief hdd_softap_stats() - Function registered with the Linux OS for

@@ -573,8 +573,8 @@ limProcessAssocRspFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tANI_U8 sub
                 limLog(pMac, LOGE, FL("Unable to alloc mem for TSPEC"));
                 psessionEntry->tspecLen = 0;
             } else {
-                 vos_mem_copy(psessionEntry->tspecIes,
-                             &pAssocRsp->TSPECInfo[0], psessionEntry->tspecLen);
+                vos_mem_copy(psessionEntry->tspecIes,
+                         &pAssocRsp->TSPECInfo[0], psessionEntry->tspecLen);
             }
         } else {
                  limLog(pMac, LOGE, FL("TSPEC has Zero length"));
@@ -636,7 +636,7 @@ limProcessAssocRspFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tANI_U8 sub
     if (pAssocRsp->statusCode != eSIR_MAC_SUCCESS_STATUS
 #ifdef WLAN_FEATURE_11W
       && (!psessionEntry->limRmfEnabled ||
-          pAssocRsp->statusCode != eSIR_MAC_TRY_AGAIN_LATER)
+	      pAssocRsp->statusCode != eSIR_MAC_TRY_AGAIN_LATER)
 #endif /* WLAN_FEATURE_11W */
       )
     {
@@ -690,7 +690,7 @@ limProcessAssocRspFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tANI_U8 sub
 
 #ifdef WLAN_FEATURE_11W
     if (psessionEntry->limRmfEnabled &&
-        pAssocRsp->statusCode == eSIR_MAC_TRY_AGAIN_LATER) {
+		pAssocRsp->statusCode == eSIR_MAC_TRY_AGAIN_LATER) {
         /* fetch timer value from IE */
         if (pAssocRsp->TimeoutInterval.present &&
             (pAssocRsp->TimeoutInterval.timeoutType ==

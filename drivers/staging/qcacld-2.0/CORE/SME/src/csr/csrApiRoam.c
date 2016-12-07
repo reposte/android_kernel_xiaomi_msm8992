@@ -1056,6 +1056,9 @@ eCsrRoamState csrRoamStateChange( tpAniSirGlobal pMac, eCsrRoamState NewRoamStat
 void csrAssignRssiForCategory(tpAniSirGlobal pMac, tANI_S8 bestApRssi, tANI_U8 catOffset)
 {
     int i;
+
+    smsLog(pMac, LOG2, FL("best AP RSSI:%d, cat offset:%d"), bestApRssi,
+           catOffset);
     if(catOffset)
     {
         pMac->roam.configParam.bCatRssiOffset = catOffset;
@@ -1784,7 +1787,10 @@ eHalStatus csrChangeDefaultConfigParam(tpAniSirGlobal pMac, tCsrConfigParam *pPa
             pMac->roam.configParam.scanAgeTimeCPS = pParam->scanAgeTimeCPS;
         }
 
-        csrAssignRssiForCategory(pMac, CSR_BEST_RSSI_VALUE, pParam->bCatRssiOffset);
+        pMac->first_scan_bucket_threshold =
+                                pParam->first_scan_bucket_threshold;
+        csrAssignRssiForCategory(pMac, pMac->first_scan_bucket_threshold,
+                                pParam->bCatRssiOffset);
         pMac->roam.configParam.nRoamingTime = pParam->nRoamingTime;
         pMac->roam.configParam.fEnforce11dChannels = pParam->fEnforce11dChannels;
         pMac->roam.configParam.fSupplicantCountryCodeHasPriority = pParam->fSupplicantCountryCodeHasPriority;
@@ -1915,8 +1921,6 @@ eHalStatus csrChangeDefaultConfigParam(tpAniSirGlobal pMac, tCsrConfigParam *pPa
                                pParam->isRoamOffloadEnabled;
 #endif
         pMac->roam.configParam.obssEnabled = pParam->obssEnabled;
-        pMac->roam.configParam.sendDeauthBeforeCon =
-                               pParam->sendDeauthBeforeCon;
     }
 
     return status;
@@ -2071,8 +2075,8 @@ eHalStatus csrGetConfigParam(tpAniSirGlobal pMac, tCsrConfigParam *pParam)
 
         pParam->obssEnabled = pMac->roam.configParam.obssEnabled;
 
-        pParam->sendDeauthBeforeCon =
-                     pMac->roam.configParam.sendDeauthBeforeCon;
+        pParam->first_scan_bucket_threshold =
+                     pMac->first_scan_bucket_threshold;
         status = eHAL_STATUS_SUCCESS;
     }
     return (status);
@@ -3696,13 +3700,11 @@ static eHalStatus csrGetRateSet( tpAniSirGlobal pMac,  tCsrRoamProfile *pProfile
         {
             for ( i = 0; i < pIes->SuppRates.num_rates; i++ )
             {
-                if (csrRatesIsDot11RateSupported(pMac,
-                                                 pIes->SuppRates.rates[i])) {
-                    if (!csrCheckRateBitmap(pIes->SuppRates.rates[i], rateBitmap)) {
-                        csrAddRateBitmap(pIes->SuppRates.rates[i], &rateBitmap);
-                        *pDstRate++ = pIes->SuppRates.rates[i];
-                        pOpRateSet->numRates++;
-                    }
+                if ( csrRatesIsDot11RateSupported( pMac, pIes->SuppRates.rates[ i ] ) )
+                {
+                    csrAddRateBitmap(pIes->SuppRates.rates[ i ], &rateBitmap);
+                    *pDstRate++ = pIes->SuppRates.rates[ i ];
+                    pOpRateSet->numRates++;
                 }
             }
         }
@@ -5758,28 +5760,6 @@ static tANI_BOOLEAN csrRoamProcessResults( tpAniSirGlobal pMac, tSmeCmd *pComman
 #ifdef FEATURE_WLAN_ESE
                 roamInfo.isESEAssoc = pSession->connectedProfile.isESEAssoc;
 #endif
-#ifdef WLAN_FEATURE_VOWIFI_11R
-                if (pSirBssDesc->mdiePresent)
-                {
-                    if(csrIsAuthType11r(pProfile->negotiatedAuthType, VOS_TRUE)
-#ifdef FEATURE_WLAN_ESE
-                       && !((pProfile->negotiatedAuthType ==
-                                 eCSR_AUTH_TYPE_OPEN_SYSTEM) &&
-                                 (pIes->ESEVersion.present) &&
-                                 (pMac->roam.configParam.isEseIniFeatureEnabled))
-#endif
-                       )
-                    {
-                        // is11Rconnection
-                        roamInfo.is11rAssoc = VOS_TRUE;
-                    }
-                    else
-                    {
-                        // is11Rconnection
-                        roamInfo.is11rAssoc = VOS_FALSE;
-                    }
-                }
-#endif
 
                 // csrRoamStateChange also affects sub-state. Hence, csrRoamStateChange happens first and then
                 // substate change.
@@ -7596,34 +7576,6 @@ eHalStatus csrRoamProcessDisassocDeauth( tpAniSirGlobal pMac, tSmeCmd *pCommand,
     return (status);
 }
 
-/**
- * csr_prepare_disconnect_command() - function to prepare disconnect command
- * @mac: pointer to global mac structure
- * @session_id: sme session index
- * @sme_cmd: pointer to sme command being prepared
- *
- * Function to prepare internal sme disconnect command
- * Return: eHAL_STATUS_SUCCESS on success else eHAL_STATUS_RESOURCES on failure
- */
-
-eHalStatus csr_prepare_disconnect_command(tpAniSirGlobal mac,
-                                        tANI_U32 session_id, tSmeCmd **sme_cmd)
-{
-	tSmeCmd *command;
-
-	command = csrGetCommandBuffer(mac);
-	if (!command) {
-		smsLog(mac, LOGE, FL("fail to get command buffer"));
-		return eHAL_STATUS_RESOURCES;
-	}
-
-	command->command = eSmeCommandRoam;
-	command->sessionId = (tANI_U8)session_id;
-	command->u.roamCmd.roamReason = eCsrForcedDisassoc;
-
-	*sme_cmd = command;
-	return eHAL_STATUS_SUCCESS;
-}
 
 eHalStatus csrRoamIssueDisassociateCmd( tpAniSirGlobal pMac, tANI_U32 sessionId, eCsrRoamDisconnectReason reason )
 {

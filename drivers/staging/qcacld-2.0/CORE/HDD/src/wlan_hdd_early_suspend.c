@@ -106,9 +106,9 @@
 #endif
 /* Time in msec */
 #ifdef CONFIG_SLUB_DEBUG_ON
-#define HDD_SSR_BRING_UP_TIME 40000
+#define HDD_SSR_BRING_UP_TIME 20000
 #else
-#define HDD_SSR_BRING_UP_TIME 30000
+#define HDD_SSR_BRING_UP_TIME 15000
 #endif
 
 static eHalStatus g_full_pwr_status;
@@ -692,7 +692,8 @@ void hdd_conf_ns_offload(hdd_adapter_t *pAdapter, int fenable)
 
     pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
 
-    if (fenable) {
+    if (fenable)
+    {
         in6_dev = __in6_dev_get(pAdapter->dev);
         if (NULL != in6_dev) {
             list_for_each(p, &in6_dev->addr_list) {
@@ -1820,7 +1821,6 @@ VOS_STATUS hdd_wlan_shutdown(void)
         vos_timer_stop(&pHddCtx->tx_rx_trafficTmr);
    }
 
-   hdd_runtime_suspend_init(pHddCtx);
    hdd_reset_all_adapters(pHddCtx);
 
    vosStatus = hddDevTmUnregisterNotifyCallback(pHddCtx);
@@ -1956,6 +1956,8 @@ VOS_STATUS hdd_wlan_shutdown(void)
                   "%s: Failed to stop TL %d", __func__, vosStatus);
        VOS_ASSERT(0);
    }
+
+   hif_disable_isr(((VosContextType*)pVosContext)->pHIFContext);
 
    hdd_unregister_mcast_bcast_filter(pHddCtx);
 
@@ -2164,7 +2166,6 @@ VOS_STATUS hdd_wlan_re_init(void *hif_sc)
    vosStatus = WLANBAP_SetConfig(&btAmpConfig);
 #endif //WLAN_BTAMP_FEATURE
 
-   hdd_runtime_suspend_init(pHddCtx);
    /* Restart all adapters */
    hdd_start_all_adapters(pHddCtx);
 
@@ -2204,9 +2205,6 @@ VOS_STATUS hdd_wlan_re_init(void *hif_sc)
       }
    }
 
-   /* Register TM level change handler function to the platform */
-   hddDevTmRegisterNotifyCallback(pHddCtx);
-
    pHddCtx->hdd_mcastbcast_filter_set = FALSE;
    hdd_register_mcast_bcast_filter(pHddCtx);
    hdd_ssr_timer_del();
@@ -2241,7 +2239,6 @@ err_unregister_pmops:
 #ifdef CONFIG_HAS_EARLYSUSPEND
    hdd_unregister_mcast_bcast_filter(pHddCtx);
 #endif
-   hdd_runtime_suspend_deinit(pHddCtx);
    hdd_close_all_adapters(pHddCtx);
 #ifdef WLAN_BTAMP_FEATURE
    WLANBAP_Stop(pVosContext);

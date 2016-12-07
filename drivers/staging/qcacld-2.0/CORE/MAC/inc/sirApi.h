@@ -3711,9 +3711,9 @@ typedef struct
  */
 typedef struct sSirPNOScanReq {
 	uint8_t         enable;
-	eSirPNOMode     modePNO;
+  eSirPNOMode         modePNO;
 	uint8_t         ucNetworksCount;
-	tSirNetworkType aNetworks[SIR_PNO_MAX_SUPP_NETWORKS];
+  tSirNetworkType     aNetworks[SIR_PNO_MAX_SUPP_NETWORKS];
 	uint8_t         sessionId;
 	uint32_t        fast_scan_period;
 	uint32_t        slow_scan_period;
@@ -5851,21 +5851,6 @@ typedef struct sAniGetLinkStatus
     tANI_U8 sessionId;
 } tAniGetLinkStatus, *tpAniGetLinkStatus;
 
-/**
- * struct sir_lost_link_info - lost link information structure.
- *
- * @vdev_id: vdev_id from WMA. some modules call sessionId.
- * @rssi: rssi at disconnection time.
- *
- * driver uses this structure to communicate information collected at
- * disconnection time.
- */
-struct sir_lost_link_info
-{
-	uint32_t vdev_id;
-	int8_t rssi;
-};
-
 /* find the size of given member within a structure */
 #ifndef member_size
 #define member_size(type, member) (sizeof(((type *)0)->member))
@@ -5980,6 +5965,23 @@ struct fw_dump_rsp
 {
 	uint32_t request_id;
 	uint32_t dump_complete;
+};
+
+/**
+ * struct vdev_ie_info - IE info
+ * @vdev_i - vdev for which the IE is being sent
+ * @ie_id - ID of the IE
+ * @length - length of the IE data
+ * @data - IE data
+ *
+ * This structure is used to store the IE information.
+ */
+struct vdev_ie_info
+{
+	uint32_t vdev_id;
+	uint32_t ie_id;
+	uint32_t length;
+	uint8_t *data;
 };
 
 /*

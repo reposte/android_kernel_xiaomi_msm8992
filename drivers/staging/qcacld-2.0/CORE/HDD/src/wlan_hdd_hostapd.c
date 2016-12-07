@@ -172,7 +172,6 @@ void hdd_hostapd_channel_allow_suspend(hdd_adapter_t *pAdapter,
             hddLog(LOGE, FL("DFS: allowing suspend (chan %d)"), channel);
             vos_wake_lock_release(&pHddCtx->sap_dfs_wakelock,
                                   WIFI_POWER_EVENT_WAKELOCK_DFS);
-            vos_runtime_pm_allow_suspend(pHddCtx->runtime_context.dfs);
         }
     }
 }
@@ -210,7 +209,6 @@ void hdd_hostapd_channel_prevent_suspend(hdd_adapter_t *pAdapter,
     if (NV_CHANNEL_DFS == vos_nv_getChannelEnabledState(channel)) {
         if (atomic_inc_return(&pHddCtx->sap_dfs_ref_cnt) == 1) {
             hddLog(LOGE, FL("DFS: preventing suspend (chan %d)"), channel);
-            vos_runtime_pm_prevent_suspend(pHddCtx->runtime_context.dfs);
             vos_wake_lock_acquire(&pHddCtx->sap_dfs_wakelock,
                                   WIFI_POWER_EVENT_WAKELOCK_DFS);
         }
@@ -786,7 +784,10 @@ VOS_STATUS hdd_hostapd_SAPEventCB( tpSap_Event pSapEvent, v_PVOID_t usrDataForCa
     hdd_config_t *cfg = NULL;
     struct wlan_dfs_info dfs_info;
     v_U8_t cc_len = WLAN_SVC_COUNTRY_CODE_LEN;
+
+#ifdef WLAN_FEATURE_MBSSID
     hdd_adapter_t *con_sap_adapter;
+#endif
     VOS_STATUS status = VOS_STATUS_SUCCESS;
 #if defined CONFIG_CNSS
     int ret = 0;
@@ -988,13 +989,6 @@ VOS_STATUS hdd_hostapd_SAPEventCB( tpSap_Event pSapEvent, v_PVOID_t usrDataForCa
                 || ignoreCAC)
             {
                 pHddApCtx->dfs_cac_block_tx = VOS_FALSE;
-            } else {
-                /*
-                 * DFS requirement: Do not transmit during CAC.
-                 * This flag will be reset when BSS starts
-                 * (if not in a DFS channel) or CAC ends.
-                 */
-                pHddApCtx->dfs_cac_block_tx = VOS_TRUE;
             }
 
             VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO_MED,
@@ -1063,14 +1057,14 @@ VOS_STATUS hdd_hostapd_SAPEventCB( tpSap_Event pSapEvent, v_PVOID_t usrDataForCa
                 }
             }
 #endif
-            /* reset the dfs_cac_status and dfs_cac_block_tx flag only when
-             * the last BSS is stopped
-             */
+#ifdef WLAN_FEATURE_MBSSID
             con_sap_adapter = hdd_get_con_sap_adapter(pHostapdAdapter);
-            if (!con_sap_adapter) {
-                pHddApCtx->dfs_cac_block_tx = TRUE;
-                pHddCtx->dev_dfs_cac_status = DFS_CAC_NEVER_DONE;
+            if (con_sap_adapter) {
+                if (!VOS_IS_DFS_CH(
+                                con_sap_adapter->sessionCtx.ap.operatingChannel))
+                    pHddCtx->dev_dfs_cac_status = DFS_CAC_NEVER_DONE;
             }
+#endif
             goto stopbss;
 
         case eSAP_DFS_CAC_START:
@@ -1888,10 +1882,6 @@ static int iw_softap_set_two_ints_getnone(struct net_device *dev,
 #ifdef DEBUG
     case QCSAP_IOCTL_SET_FW_CRASH_INJECT:
         hddLog(LOGE, "WE_SET_FW_CRASH_INJECT: %d %d", value[1], value[2]);
-        if (!pHddCtx->cfg_ini->crash_inject_enabled) {
-            hddLog(LOGE, "Crash Inject ini disabled, Ignore Crash Inject");
-            return 0;
-        }
         ret = process_wma_set_command_twoargs((int) pAdapter->sessionId,
                                            (int) GEN_PARAM_CRASH_INJECT,
                                            value[1], value[2], GEN_CMD);
@@ -3253,6 +3243,7 @@ static iw_softap_disassoc_sta(struct net_device *dev,
     struct tagCsrDelStaParams delStaParams;
 
     ENTER();
+
     if (!capable(CAP_NET_ADMIN)) {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                  FL("permission check failed"));
@@ -5120,6 +5111,12 @@ VOS_STATUS hdd_init_ap_mode( hdd_adapter_t *pAdapter )
     }
 
     pAdapter->sessionCtx.ap.sapContext = sapContext;
+
+    /*
+     * DFS requirement: Do not transmit during CAC. This flag will be reset
+     * when BSS starts(if not in a DFS channel) or CAC ends.
+     */
+    pAdapter->sessionCtx.ap.dfs_cac_block_tx = VOS_TRUE;
 
     status = WLANSAP_Start(sapContext);
     if ( ! VOS_IS_STATUS_SUCCESS( status ) )

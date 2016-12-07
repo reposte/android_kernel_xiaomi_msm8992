@@ -304,13 +304,6 @@ static A_STATUS HTCSendBundledNetbuf(HTC_TARGET *target,
             data_len,
             data_len / pEndpoint->TxCreditSize);
 #endif
-
-#if defined(DEBUG_HL_LOGGING) && defined(CONFIG_HL_SUPPORT)
-    if ((data_len / pEndpoint->TxCreditSize) < HTC_MAX_MSG_PER_BUNDLE_TX) {
-        target->tx_bundle_stats[data_len / pEndpoint->TxCreditSize]++;
-    }
-#endif
-
     status = HIFSend_head(target->hif_dev,
                pEndpoint->UL_PipeID,
                pEndpoint->Id,
@@ -428,7 +421,6 @@ static A_STATUS HTCIssuePackets(HTC_TARGET       *target,
     HTC_PACKET          *pPacket = NULL;
     u_int16_t           payloadLen;
     HTC_FRAME_HDR       *pHtcHdr;
-    bool                is_tx_runtime_put = false;
 
     AR_DEBUG_PRINTF(ATH_DEBUG_SEND, ("+HTCIssuePackets: Queue: %p, Pkts %d \n",
                     pPktQueue, HTC_PACKET_QUEUE_DEPTH(pPktQueue)));
@@ -498,9 +490,6 @@ static A_STATUS HTCIssuePackets(HTC_TARGET       *target,
         pEndpoint->ul_outstanding_cnt++;
         UNLOCK_HTC_TX(target);
 
-        if (pPacket->PktInfo.AsTx.Tag == HTC_TX_PACKET_TAG_RUNTIME_PUT)
-            is_tx_runtime_put = true;
-
         status = HIFSend_head(target->hif_dev,
                               pEndpoint->UL_PipeID, pEndpoint->Id,
                               HTC_HDR_LENGTH + pPacket->ActualLength,
@@ -539,19 +528,7 @@ static A_STATUS HTCIssuePackets(HTC_TARGET       *target,
             break;
         }
 
-        /*
-         * For HTT messages the Tx complete is disabled and for some HTT
-         * messages which doesn't have response from FW, runtime pm put
-         * is not happening. To address that the HTT packet which is tagged
-         * with HTC_TX_PACKET_TAG_RUNTIME_PUT releases the count after the
-         * packet sent is successful
-         */
-        if (is_tx_runtime_put) {
-            is_tx_runtime_put = false;
-            hif_pm_runtime_put(target->hif_dev);
-        }
     }
-
     if (adf_os_unlikely(A_FAILED(status))) {
 #if defined(HIF_USB)
         if (pEndpoint->Id >= ENDPOINT_2 && pEndpoint->Id <= ENDPOINT_5)
@@ -564,11 +541,10 @@ static A_STATUS HTCIssuePackets(HTC_TARGET       *target,
                 AR_DEBUG_PRINTF(ATH_DEBUG_ERR, ("HTCIssuePackets, failed pkt:0x%p status:%d \n",pPacket,status));
             }
             pPacket = HTC_PACKET_DEQUEUE(pPktQueue);
-            if (pPacket) {
-               pPacket->Status = status;
-               hif_pm_runtime_put(target->hif_dev);
-               SendPacketCompletion(target,pPacket);
-            }
+	    if (pPacket) {
+		    pPacket->Status = status;
+		    SendPacketCompletion(target,pPacket);
+	    }
         }
     }
 
@@ -764,6 +740,7 @@ void GetHTCSendPacketsCreditBased(HTC_TARGET        *target,
         RequeueHTCAutoPmSendPackets(target, pEndpoint, &tempQueue);
 
     AR_DEBUG_PRINTF(ATH_DEBUG_SEND,("-GetHTCSendPacketsCreditBased \n"));
+
 }
 
 void GetHTCSendPackets(HTC_TARGET        *target,
@@ -804,7 +781,6 @@ void GetHTCSendPackets(HTC_TARGET        *target,
                hif_pm_runtime_put(target->hif_dev);
             break;
         }
-
         AR_DEBUG_PRINTF(ATH_DEBUG_SEND,(" Got packet:%p , New Queue Depth: %d\n",
                 pPacket, HTC_PACKET_QUEUE_DEPTH(pTxQueue)));
         /* For non-credit path the sequence number is already embedded
