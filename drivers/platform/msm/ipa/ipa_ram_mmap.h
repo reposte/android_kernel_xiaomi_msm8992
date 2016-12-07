@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -49,7 +49,6 @@
 #define IPA_MEM_CANARY_SIZE 4
 #define IPA_MEM_CANARY_VAL 0xdeadbeef
 
-#define IPA_MEM_RAM_MODEM_NETWORK_STATS_SIZE 256
 /*
  * IPA v2.0 and v2.1 SRAM memory layout:
  * +-------------+
@@ -83,6 +82,12 @@
  * +-------------+
  * |    CANARY   |
  * +-------------+
+ * | APPS V4 FLT |
+ * +-------------+
+ * | APPS V6 FLT |
+ * +-------------+
+ * |    CANARY   |
+ * +-------------+
  * |   UC INFO   |
  * +-------------+
  */
@@ -108,8 +113,8 @@
 		IPA_MEM_v2_RAM_V6_FLT_SIZE + 2*IPA_MEM_CANARY_SIZE)
 #define IPA_MEM_v2_RAM_V4_NUM_INDEX 11
 #define IPA_MEM_v2_V4_MODEM_RT_INDEX_LO 0
-#define IPA_MEM_v2_V4_MODEM_RT_INDEX_HI 4
-#define IPA_MEM_v2_V4_APPS_RT_INDEX_LO 5
+#define IPA_MEM_v2_V4_MODEM_RT_INDEX_HI 3
+#define IPA_MEM_v2_V4_APPS_RT_INDEX_LO 4
 #define IPA_MEM_v2_V4_APPS_RT_INDEX_HI 10
 #define IPA_MEM_v2_RAM_V4_RT_SIZE (IPA_MEM_v2_RAM_V4_NUM_INDEX * 4)
 
@@ -122,8 +127,8 @@
 		IPA_MEM_v2_RAM_V4_RT_SIZE + IPA_MEM_CANARY_SIZE)
 #define IPA_MEM_v2_RAM_V6_NUM_INDEX 11
 #define IPA_MEM_v2_V6_MODEM_RT_INDEX_LO 0
-#define IPA_MEM_v2_V6_MODEM_RT_INDEX_HI 4
-#define IPA_MEM_v2_V6_APPS_RT_INDEX_LO 5
+#define IPA_MEM_v2_V6_MODEM_RT_INDEX_HI 3
+#define IPA_MEM_v2_V6_APPS_RT_INDEX_LO 4
 #define IPA_MEM_v2_V6_APPS_RT_INDEX_HI 10
 #define IPA_MEM_v2_RAM_V6_RT_SIZE (IPA_MEM_v2_RAM_V6_NUM_INDEX * 4)
 
@@ -152,7 +157,7 @@
 
 #define IPA_MEM_v2_RAM_MODEM_OFST (IPA_MEM_v2_RAM_APPS_HDR_OFST + \
 		IPA_MEM_v2_RAM_APPS_HDR_SIZE + IPA_MEM_CANARY_SIZE)
-#define IPA_MEM_v2_RAM_MODEM_SIZE 6824
+#define IPA_MEM_v2_RAM_MODEM_SIZE 3276
 
 /* modem memory is 4B aligned */
 #if (IPA_MEM_v2_RAM_MODEM_OFST & 3)
@@ -161,7 +166,7 @@
 
 #define IPA_MEM_v2_RAM_APPS_V4_FLT_OFST (IPA_MEM_v2_RAM_MODEM_OFST + \
 		IPA_MEM_v2_RAM_MODEM_SIZE + IPA_MEM_CANARY_SIZE)
-#define IPA_MEM_v2_RAM_APPS_V4_FLT_SIZE 0
+#define IPA_MEM_v2_RAM_APPS_V4_FLT_SIZE 2176
 
 /* filtering rule is 4B aligned */
 #if (IPA_MEM_v2_RAM_APPS_V4_FLT_OFST & 3)
@@ -170,7 +175,7 @@
 
 #define IPA_MEM_v2_RAM_APPS_V6_FLT_OFST (IPA_MEM_v2_RAM_APPS_V4_FLT_OFST + \
 		IPA_MEM_v2_RAM_APPS_V4_FLT_SIZE)
-#define IPA_MEM_v2_RAM_APPS_V6_FLT_SIZE 0
+#define IPA_MEM_v2_RAM_APPS_V6_FLT_SIZE 1372
 
 /* filtering rule is 4B aligned */
 #if (IPA_MEM_v2_RAM_APPS_V6_FLT_OFST & 3)

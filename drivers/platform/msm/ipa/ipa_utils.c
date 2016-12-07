@@ -40,13 +40,6 @@
 #define IPA_EOT_COAL_GRAN_MIN (1)
 #define IPA_EOT_COAL_GRAN_MAX (16)
 
-#define IPA_AGGR_BYTE_LIMIT (\
-		IPA_ENDP_INIT_AGGR_N_AGGR_BYTE_LIMIT_BMSK >> \
-		IPA_ENDP_INIT_AGGR_N_AGGR_BYTE_LIMIT_SHFT)
-#define IPA_AGGR_PKT_LIMIT (\
-		IPA_ENDP_INIT_AGGR_n_AGGR_PKT_LIMIT_BMSK >> \
-		IPA_ENDP_INIT_AGGR_n_AGGR_PKT_LIMIT_SHFT)
-
 static const int ipa_ofst_meq32[] = { IPA_OFFSET_MEQ32_0,
 					IPA_OFFSET_MEQ32_1, -1 };
 static const int ipa_ofst_meq128[] = { IPA_OFFSET_MEQ128_0,
@@ -610,7 +603,7 @@ void _ipa_sram_settings_read_v2_0(void)
 	ipa_ctx->hdr_tbl_lcl = 0;
 	ipa_ctx->ip4_rt_tbl_lcl = 0;
 	ipa_ctx->ip6_rt_tbl_lcl = 0;
-	ipa_ctx->ip4_flt_tbl_lcl = 0;
+	ipa_ctx->ip4_flt_tbl_lcl = 1;
 	ipa_ctx->ip6_flt_tbl_lcl = 0;
 }
 
@@ -791,53 +784,6 @@ int ipa_get_ep_mapping(enum ipa_client_type client)
 	return ep_mapping[hw_type_index][client];
 }
 EXPORT_SYMBOL(ipa_get_ep_mapping);
-
-/* ipa_set_client() - provide client mapping
- * @client: client type
- *
- * Return value: none
- */
-void ipa_set_client(int index, enum ipacm_client_enum client, bool uplink)
-{
-	if (client >= IPACM_CLIENT_MAX || client < IPACM_CLIENT_USB) {
-		IPAERR("Bad client number! client =%d\n", client);
-	} else if (index >= IPA_NUM_PIPES || index < 0) {
-		IPAERR("Bad pipe index! index =%d\n", index);
-	} else {
-		ipa_ctx->ipacm_client[index].client_enum = client;
-		ipa_ctx->ipacm_client[index].uplink = uplink;
-	}
-}
-EXPORT_SYMBOL(ipa_set_client);
-
-/**
- * ipa_get_client() - provide client mapping
- * @client: client type
- *
- * Return value: none
- */
-enum ipacm_client_enum ipa_get_client(int pipe_idx)
-{
-	if (pipe_idx >= IPA_NUM_PIPES || pipe_idx < 0) {
-		IPAERR("Bad pipe index! pipe_idx =%d\n", pipe_idx);
-		return IPACM_CLIENT_MAX;
-	} else {
-		return ipa_ctx->ipacm_client[pipe_idx].client_enum;
-	}
-}
-EXPORT_SYMBOL(ipa_get_client);
-
-/**
- * ipa_get_client_uplink() - provide client mapping
- * @client: client type
- *
- * Return value: none/
- */
-bool ipa_get_client_uplink(int pipe_idx)
-{
-	return ipa_ctx->ipacm_client[pipe_idx].uplink;
-}
-EXPORT_SYMBOL(ipa_get_client_uplink);
 
 /**
  * ipa_get_rm_resource_from_ep() - get the IPA_RM resource which is related to
@@ -4533,11 +4479,6 @@ enum ipa_hw_type ipa_get_hw_type(void)
 }
 EXPORT_SYMBOL(ipa_get_hw_type);
 
-/**
- * ipa_get_smem_restr_bytes()- Return IPA smem restricted bytes
- *
- * Return value: u16 - number of IPA smem restricted bytes
- */
 u16 ipa_get_smem_restr_bytes(void)
 {
 	if (ipa_ctx) {
@@ -4548,52 +4489,3 @@ u16 ipa_get_smem_restr_bytes(void)
 	}
 }
 EXPORT_SYMBOL(ipa_get_smem_restr_bytes);
-
-/**
- * ipa_get_modem_cfg_emb_pipe_flt()- Return ipa_ctx->modem_cfg_emb_pipe_flt
- *
- * Return value: true if modem configures embedded pipe flt, false otherwise
- */
-bool ipa_get_modem_cfg_emb_pipe_flt(void)
-{
-	if (ipa_ctx) {
-		return ipa_ctx->modem_cfg_emb_pipe_flt;
-	} else {
-		IPAERR("IPA driver has not been initialized\n");
-		return false;
-	}
-}
-EXPORT_SYMBOL(ipa_get_modem_cfg_emb_pipe_flt);
-
-/**
- * ipa_disable_apps_wan_cons_deaggr()- set ipa_ctx->ipa_client_apps_wan_cons_agg_gro
- *
- * Return value: 0 or negative in case of failure
- */
-int ipa_disable_apps_wan_cons_deaggr(uint32_t agg_size, uint32_t agg_count)
-{
-	int res = -1;
-
-	/* checking if IPA-HW can support */
-	if ((agg_size >> 10) >
-		IPA_AGGR_BYTE_LIMIT) {
-		IPAWANERR("IPA-AGG byte limit %d\n",
-		IPA_AGGR_BYTE_LIMIT);
-		IPAWANERR("exceed aggr_byte_limit\n");
-		return res;
-		}
-	if (agg_count >
-		IPA_AGGR_PKT_LIMIT) {
-		IPAWANERR("IPA-AGG pkt limit %d\n",
-		IPA_AGGR_PKT_LIMIT);
-		IPAWANERR("exceed aggr_pkt_limit\n");
-		return res;
-	}
-
-	if (ipa_ctx) {
-		ipa_ctx->ipa_client_apps_wan_cons_agg_gro = true;
-		return 0;
-	}
-	return res;
-}
-EXPORT_SYMBOL(ipa_disable_apps_wan_cons_deaggr);

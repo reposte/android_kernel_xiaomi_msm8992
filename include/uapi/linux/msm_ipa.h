@@ -272,8 +272,6 @@ enum ipa_flt_action {
  * wlan client connect ex: new wlan client connected
  * wlan scc switch: wlan interfaces in scc mode
  * wlan mcc switch: wlan interfaces in mcc mode
- * wlan wdi enable: wdi data path completed
- * wlan wdi disable: wdi data path teardown
  */
 enum ipa_wlan_event {
 	WLAN_CLIENT_CONNECT,
@@ -289,8 +287,6 @@ enum ipa_wlan_event {
 	WLAN_CLIENT_CONNECT_EX,
 	WLAN_SWITCH_TO_SCC,
 	WLAN_SWITCH_TO_MCC,
-	WLAN_WDI_ENABLE,
-	WLAN_WDI_DISABLE,
 	IPA_WLAN_EVENT_MAX
 };
 
@@ -304,21 +300,13 @@ enum ipa_wan_event {
 	WAN_UPSTREAM_ROUTE_ADD = IPA_WLAN_EVENT_MAX,
 	WAN_UPSTREAM_ROUTE_DEL,
 	WAN_EMBMS_CONNECT,
-	WAN_XLAT_CONNECT,
 	IPA_WAN_EVENT_MAX
 };
 
 enum ipa_ecm_event {
 	ECM_CONNECT = IPA_WAN_EVENT_MAX,
 	ECM_DISCONNECT,
-	IPA_ECM_EVENT_MAX,
-};
-
-enum ipa_tethering_stats_event {
-	IPA_TETHERING_STATS_UPDATE_STATS = IPA_ECM_EVENT_MAX,
-	IPA_TETHERING_STATS_UPDATE_NETWORK_STATS,
-	IPA_TETHERING_STATS_EVENT_MAX,
-	IPA_EVENT_MAX_NUM = IPA_TETHERING_STATS_EVENT_MAX
+	IPA_EVENT_MAX_NUM
 };
 
 #define IPA_EVENT_MAX ((int)IPA_EVENT_MAX_NUM)
@@ -1065,7 +1053,6 @@ struct ipa_ioc_query_intf_tx_props {
  * @rt_tbl_idx: index of RT table referred to by filter rule
  * @mux_id: MUX_ID
  * @filter_hdl: handle of filter (as specified by provider of filter rule)
- * @is_xlat_rule: it is xlat flt rule or not
  */
 struct ipa_ioc_ext_intf_prop {
 	enum ipa_ip_type ip;
@@ -1074,7 +1061,6 @@ struct ipa_ioc_ext_intf_prop {
 	uint32_t rt_tbl_idx;
 	uint8_t mux_id;
 	uint32_t filter_hdl;
-	uint8_t is_xlat_rule;
 };
 
 /**
@@ -1318,11 +1304,7 @@ struct ipa_ioc_write_qmapid {
 	uint8_t qmap_id;
 };
 
-enum ipacm_client_enum {
-	IPACM_CLIENT_USB = 1,
-	IPACM_CLIENT_WLAN,
-	IPACM_CLIENT_MAX
-};
+
 /**
  *   actual IOCTLs supported by IPA driver
  */

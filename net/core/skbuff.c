@@ -744,10 +744,6 @@ static struct sk_buff *__skb_clone(struct sk_buff *n, struct sk_buff *skb)
 	atomic_inc(&(skb_shinfo(skb)->dataref));
 	skb->cloned = 1;
 
-#ifdef CONFIG_IPV6_NDISC_NODETYPE
-	C(ndisc_nodetype);
-#endif
-
 	return n;
 #undef C
 }
@@ -2715,12 +2711,11 @@ EXPORT_SYMBOL(skb_append_datato_frags);
  */
 unsigned char *skb_pull_rcsum(struct sk_buff *skb, unsigned int len)
 {
-	unsigned char *data = skb->data;
-
 	BUG_ON(len > skb->len);
-	__skb_pull(skb, len);
-	skb_postpull_rcsum(skb, data, len);
-	return skb->data;
+	skb->len -= len;
+	BUG_ON(skb->len < skb->data_len);
+	skb_postpull_rcsum(skb, skb->data, len);
+	return skb->data += len;
 }
 EXPORT_SYMBOL_GPL(skb_pull_rcsum);
 

@@ -35,7 +35,6 @@
 #define IPA_Q6_SERVICE_SVC_ID 0x31
 #define IPA_Q6_SERVICE_INS_ID 2
 
-#define QMI_SEND_STATS_REQ_TIMEOUT_MS 5000
 #define QMI_SEND_REQ_TIMEOUT_MS 60000
 
 static struct qmi_handle *ipa_svc_handle;
@@ -47,10 +46,10 @@ static struct workqueue_struct *ipa_clnt_resp_workqueue;
 static void *curr_conn;
 static bool qmi_modem_init_fin, qmi_indication_fin;
 static struct work_struct ipa_qmi_service_init_work;
+static bool is_load_uc;
 static uint32_t ipa_wan_platform;
 struct ipa_qmi_context *ipa_qmi_ctx;
 static bool workqueues_stopped;
-static bool first_time_handshake;
 
 /* QMI A5 service */
 
@@ -428,7 +427,7 @@ static int qmi_init_modem_send_sync_msg(void)
 	req.hdr_proc_ctx_tbl_info.modem_offset_end =
 		IPA_MEM_PART(modem_hdr_proc_ctx_ofst) +
 		IPA_MEM_PART(modem_hdr_proc_ctx_size) + smem_restr_bytes - 1;
-	if (!ipa_uc_loaded_check()) {  /* First time boot */
+	if (is_load_uc) {  /* First time boot */
 		req.is_ssr_bootup_valid = false;
 		req.is_ssr_bootup = 0;
 	} else {  /* After SSR boot */
@@ -687,39 +686,6 @@ static void ipa_q6_clnt_notify(struct qmi_handle *handle,
 	}
 }
 
-static void ipa_q6_clnt_ind_cb(struct qmi_handle *handle, unsigned int msg_id,
-			       void *msg, unsigned int msg_len,
-			       void *ind_cb_priv)
-{
-	struct ipa_data_usage_quota_reached_ind_msg_v01 qmi_ind;
-	struct msg_desc qmi_ind_desc;
-	int rc = 0;
-
-	if (handle != ipa_q6_clnt) {
-		IPAWANERR("Wrong client\n");
-		return;
-	}
-
-	if (QMI_IPA_DATA_USAGE_QUOTA_REACHED_IND_V01 == msg_id) {
-		memset(&qmi_ind, 0, sizeof(
-			struct ipa_data_usage_quota_reached_ind_msg_v01));
-		qmi_ind_desc.max_msg_len =
-			QMI_IPA_DATA_USAGE_QUOTA_REACHED_IND_MAX_MSG_LEN_V01;
-		qmi_ind_desc.msg_id = QMI_IPA_DATA_USAGE_QUOTA_REACHED_IND_V01;
-		qmi_ind_desc.ei_array =
-			ipa_data_usage_quota_reached_ind_msg_data_v01_ei;
-
-		rc = qmi_kernel_decode(&qmi_ind_desc, &qmi_ind, msg, msg_len);
-		if (rc < 0) {
-			IPAWANERR("Error decoding msg_id %d\n", msg_id);
-			return;
-		}
-		IPAWANDBG("Quota reached indication on qmux(%d) Mbytes(%lu)\n",
-			  qmi_ind.apn.mux_id,
-			  (long unsigned int) qmi_ind.apn.num_Mbytes);
-		ipa_broadcast_quota_reach_ind(qmi_ind.apn.mux_id);
-	}
-}
 
 static void ipa_q6_clnt_svc_arrive(struct work_struct *work)
 {
@@ -745,11 +711,6 @@ static void ipa_q6_clnt_svc_arrive(struct work_struct *work)
 		ipa_q6_clnt = NULL;
 		return;
 	}
-
-	rc = qmi_register_ind_cb(ipa_q6_clnt, ipa_q6_clnt_ind_cb, NULL);
-	if (rc < 0)
-		IPAWANERR("Unable to register for indications\n");
-
 	ipa_q6_clnt_reset = 0;
 	IPAWANDBG("Q6 QMI service available now\n");
 	/* Initialize modem IPA-driver */
@@ -771,9 +732,15 @@ static void ipa_q6_clnt_svc_arrive(struct work_struct *work)
 	}
 	qmi_modem_init_fin = true;
 
-	/* In cold-bootup, first_time_handshake = false */
-	ipa_q6_handshake_complete(first_time_handshake);
-	first_time_handshake = true;
+	/*
+	 * In case the uC is required to be loaded by the Modem,
+	 * the proxy vote will be removed only when uC loading is
+	 * complete and indication is received by the AP. After SSR,
+	 * uC is already loaded. Therefore, proxy vote can be removed
+	 * once Modem init is complete.
+	 */
+	if (!is_load_uc)
+		ipa_proxy_clk_unvote();
 
 	IPAWANDBG("complete, qmi_modem_init_fin : %d\n",
 		qmi_modem_init_fin);
@@ -919,9 +886,10 @@ destroy_ipa_A7_svc_wq:
 	return;
 }
 
-int ipa_qmi_service_init(uint32_t wan_platform_type)
+int ipa_qmi_service_init(bool load_uc, uint32_t wan_platform_type)
 {
 	ipa_wan_platform = wan_platform_type;
+	is_load_uc = load_uc;
 	qmi_modem_init_fin = false;
 	qmi_indication_fin = false;
 	workqueues_stopped = false;
@@ -1005,126 +973,4 @@ void ipa_qmi_stop_workqueues(void)
 	cancel_delayed_work(&work_recv_msg_client);
 	cancel_delayed_work(&work_svc_arrive);
 	cancel_delayed_work(&work_svc_exit);
-}
-
-int ipa_qmi_get_data_stats(struct ipa_get_data_stats_req_msg_v01 *req,
-			   struct ipa_get_data_stats_resp_msg_v01 *resp)
-{
-	struct msg_desc req_desc, resp_desc;
-	int rc;
-
-	req_desc.max_msg_len = QMI_IPA_GET_DATA_STATS_REQ_MAX_MSG_LEN_V01;
-	req_desc.msg_id = QMI_IPA_GET_DATA_STATS_REQ_V01;
-	req_desc.ei_array = ipa_get_data_stats_req_msg_data_v01_ei;
-
-	resp_desc.max_msg_len = QMI_IPA_GET_DATA_STATS_RESP_MAX_MSG_LEN_V01;
-	resp_desc.msg_id = QMI_IPA_GET_DATA_STATS_RESP_V01;
-	resp_desc.ei_array = ipa_get_data_stats_resp_msg_data_v01_ei;
-
-	IPAWANDBG("Sending QMI_IPA_GET_DATA_STATS_REQ_V01\n");
-
-	rc = qmi_send_req_wait(ipa_q6_clnt, &req_desc, req,
-			sizeof(struct ipa_get_data_stats_req_msg_v01),
-			&resp_desc, resp,
-			sizeof(struct ipa_get_data_stats_resp_msg_v01),
-			QMI_SEND_STATS_REQ_TIMEOUT_MS);
-
-	IPAWANDBG("QMI_IPA_GET_DATA_STATS_RESP_V01 received\n");
-
-	return ipa_check_qmi_response(rc,
-		QMI_IPA_GET_DATA_STATS_REQ_V01, resp->resp.result,
-		resp->resp.error, "ipa_get_data_stats_resp_msg_v01");
-}
-
-int ipa_qmi_get_network_stats(struct ipa_get_apn_data_stats_req_msg_v01 *req,
-			      struct ipa_get_apn_data_stats_resp_msg_v01 *resp)
-{
-	struct msg_desc req_desc, resp_desc;
-	int rc;
-
-	req_desc.max_msg_len = QMI_IPA_GET_APN_DATA_STATS_REQ_MAX_MSG_LEN_V01;
-	req_desc.msg_id = QMI_IPA_GET_APN_DATA_STATS_REQ_V01;
-	req_desc.ei_array = ipa_get_apn_data_stats_req_msg_data_v01_ei;
-
-	resp_desc.max_msg_len = QMI_IPA_GET_APN_DATA_STATS_RESP_MAX_MSG_LEN_V01;
-	resp_desc.msg_id = QMI_IPA_GET_APN_DATA_STATS_RESP_V01;
-	resp_desc.ei_array = ipa_get_apn_data_stats_resp_msg_data_v01_ei;
-
-	IPAWANDBG("Sending QMI_IPA_GET_APN_DATA_STATS_REQ_V01\n");
-
-	rc = qmi_send_req_wait(ipa_q6_clnt, &req_desc, req,
-			sizeof(struct ipa_get_apn_data_stats_req_msg_v01),
-			&resp_desc, resp,
-			sizeof(struct ipa_get_apn_data_stats_resp_msg_v01),
-			QMI_SEND_STATS_REQ_TIMEOUT_MS);
-
-	IPAWANDBG("QMI_IPA_GET_APN_DATA_STATS_RESP_V01 received\n");
-
-	return ipa_check_qmi_response(rc,
-		QMI_IPA_GET_APN_DATA_STATS_REQ_V01, resp->resp.result,
-		resp->resp.error, "ipa_get_apn_data_stats_req_msg_v01");
-}
-
-int ipa_qmi_set_data_quota(struct ipa_set_data_usage_quota_req_msg_v01 *req)
-{
-	struct ipa_set_data_usage_quota_resp_msg_v01 resp;
-	struct msg_desc req_desc, resp_desc;
-	int rc;
-
-	memset(&resp, 0, sizeof(struct ipa_set_data_usage_quota_resp_msg_v01));
-
-	req_desc.max_msg_len = QMI_IPA_SET_DATA_USAGE_QUOTA_REQ_MAX_MSG_LEN_V01;
-	req_desc.msg_id = QMI_IPA_SET_DATA_USAGE_QUOTA_REQ_V01;
-	req_desc.ei_array = ipa_set_data_usage_quota_req_msg_data_v01_ei;
-
-	resp_desc.max_msg_len =
-		QMI_IPA_SET_DATA_USAGE_QUOTA_RESP_MAX_MSG_LEN_V01;
-	resp_desc.msg_id = QMI_IPA_SET_DATA_USAGE_QUOTA_RESP_V01;
-	resp_desc.ei_array = ipa_set_data_usage_quota_resp_msg_data_v01_ei;
-
-	IPAWANDBG("Sending QMI_IPA_SET_DATA_USAGE_QUOTA_REQ_V01\n");
-
-	rc = qmi_send_req_wait(ipa_q6_clnt, &req_desc, req,
-			sizeof(struct ipa_set_data_usage_quota_req_msg_v01),
-			&resp_desc, &resp, sizeof(resp),
-			QMI_SEND_STATS_REQ_TIMEOUT_MS);
-
-	IPAWANDBG("QMI_IPA_SET_DATA_USAGE_QUOTA_RESP_V01 received\n");
-
-	return ipa_check_qmi_response(rc,
-		QMI_IPA_SET_DATA_USAGE_QUOTA_REQ_V01, resp.resp.result,
-		resp.resp.error, "ipa_set_data_usage_quota_req_msg_v01");
-}
-
-int ipa_qmi_stop_data_qouta(void)
-{
-	struct ipa_stop_data_usage_quota_req_msg_v01 req;
-	struct ipa_stop_data_usage_quota_resp_msg_v01 resp;
-	struct msg_desc req_desc, resp_desc;
-	int rc;
-
-	memset(&req, 0, sizeof(struct ipa_stop_data_usage_quota_req_msg_v01));
-	memset(&resp, 0, sizeof(struct ipa_stop_data_usage_quota_resp_msg_v01));
-
-	req_desc.max_msg_len =
-		QMI_IPA_STOP_DATA_USAGE_QUOTA_REQ_MAX_MSG_LEN_V01;
-	req_desc.msg_id = QMI_IPA_STOP_DATA_USAGE_QUOTA_REQ_V01;
-	req_desc.ei_array = ipa_stop_data_usage_quota_req_msg_data_v01_ei;
-
-	resp_desc.max_msg_len =
-		QMI_IPA_STOP_DATA_USAGE_QUOTA_RESP_MAX_MSG_LEN_V01;
-	resp_desc.msg_id = QMI_IPA_STOP_DATA_USAGE_QUOTA_RESP_V01;
-	resp_desc.ei_array = ipa_stop_data_usage_quota_resp_msg_data_v01_ei;
-
-	IPAWANDBG("Sending QMI_IPA_STOP_DATA_USAGE_QUOTA_REQ_V01\n");
-
-	rc = qmi_send_req_wait(ipa_q6_clnt, &req_desc, &req, sizeof(req),
-		&resp_desc, &resp, sizeof(resp),
-		QMI_SEND_STATS_REQ_TIMEOUT_MS);
-
-	IPAWANDBG("QMI_IPA_STOP_DATA_USAGE_QUOTA_RESP_V01 received\n");
-
-	return ipa_check_qmi_response(rc,
-		QMI_IPA_STOP_DATA_USAGE_QUOTA_REQ_V01, resp.resp.result,
-		resp.resp.error, "ipa_stop_data_usage_quota_req_msg_v01");
 }

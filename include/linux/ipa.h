@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -901,30 +901,6 @@ struct ipa_wdi_out_params {
 };
 
 /**
- * struct ipa_wdi_db_params - information provided to retrieve
- *       physical address of uC doorbell
- * @client:	type of "client" (IPA_CLIENT_WLAN#_PROD/CONS)
- * @uc_door_bell_pa: physical address of IPA uc doorbell
- */
-struct ipa_wdi_db_params {
-	enum ipa_client_type client;
-	phys_addr_t uc_door_bell_pa;
-};
-
-/**
- * struct  ipa_wdi_uc_ready_params - uC ready CB parameters
- * @is_uC_ready: uC loaded or not
- * @priv : callback cookie
- * @notify:	callback
- */
-typedef void (*ipa_uc_ready_cb)(void *priv);
-struct ipa_wdi_uc_ready_params {
-	bool is_uC_ready;
-	void *priv;
-	ipa_uc_ready_cb notify;
-};
-
-/**
  * struct odu_bridge_params - parameters for odu bridge initialization API
  *
  * @netdev_name: network interface name
@@ -1195,22 +1171,6 @@ int ipa_resume_wdi_pipe(u32 clnt_hdl);
 int ipa_suspend_wdi_pipe(u32 clnt_hdl);
 int ipa_get_wdi_stats(struct IpaHwStatsWDIInfoData_t *stats);
 u16 ipa_get_smem_restr_bytes(void);
-/*
- * To retrieve doorbell physical address of
- * wlan pipes
- */
-int ipa_uc_wdi_get_dbpa(struct ipa_wdi_db_params *out);
-
-/*
- * To register uC ready callback if uC not ready
- * and also check uC readiness
- * if uC not ready only, register callback
- */
-int ipa_uc_reg_rdyCB(struct ipa_wdi_uc_ready_params *param);
-/*
- * To de-register uC ready callback
- */
-int ipa_uc_dereg_rdyCB(void);
 
 /*
  * Resource manager
@@ -1263,15 +1223,6 @@ int teth_bridge_init(struct teth_bridge_init_params *params);
 int teth_bridge_disconnect(enum ipa_client_type client);
 
 int teth_bridge_connect(struct teth_bridge_connect_params *connect_params);
-
-/*
- * Tethering client info
- */
-void ipa_set_client(int index, enum ipacm_client_enum client, bool uplink);
-
-enum ipacm_client_enum ipa_get_client(int pipe_idx);
-
-bool ipa_get_client_uplink(int pipe_idx);
 
 /*
  * ODU bridge
@@ -1358,10 +1309,6 @@ bool ipa_is_client_handle_valid(u32 clnt_hdl);
 enum ipa_client_type ipa_get_client_mapping(int pipe_idx);
 
 enum ipa_rm_resource_name ipa_get_rm_resource_from_ep(int pipe_idx);
-
-bool ipa_get_modem_cfg_emb_pipe_flt(void);
-
-int ipa_disable_apps_wan_cons_deaggr(uint32_t agg_size, uint32_t agg_count);
 
 #else /* CONFIG_IPA */
 
@@ -1745,24 +1692,6 @@ static inline int ipa_suspend_wdi_pipe(u32 clnt_hdl)
 	return -EPERM;
 }
 
-static inline int ipa_uc_wdi_get_dbpa(
-	struct ipa_wdi_db_params *out)
-{
-	return -EPERM;
-}
-
-static inline int ipa_uc_reg_rdyCB(
-	struct ipa_wdi_uc_ready_params *param)
-{
-	return -EPERM;
-}
-
-static inline int ipa_uc_dereg_rdyCB(void)
-{
-	return -EPERM;
-}
-
-
 /*
  * Resource manager
  */
@@ -1879,25 +1808,6 @@ static inline int teth_bridge_connect(struct teth_bridge_connect_params
 {
 	return -EPERM;
 }
-
-/*
- * Tethering client info
- */
-static inline void ipa_set_client(int index, enum ipacm_client_enum client,
-	bool uplink)
-{
-}
-
-static inline enum ipacm_client_enum ipa_get_client(int pipe_idx)
-{
-	return -EPERM;
-}
-
-static inline bool ipa_get_client_uplink(int pipe_idx)
-{
-	return -EPERM;
-}
-
 
 /*
  * ODU bridge
@@ -2089,15 +1999,6 @@ static inline enum ipa_rm_resource_name ipa_get_rm_resource_from_ep(
 	return -EFAULT;
 }
 
-static inline bool ipa_get_modem_cfg_emb_pipe_flt(void)
-{
-	return -EINVAL;
-}
-
-static inline int ipa_disable_apps_wan_cons_deaggr(void)
-{
-	return -EINVAL;
-}
 #endif /* CONFIG_IPA*/
 
 #endif /* _IPA_H_ */

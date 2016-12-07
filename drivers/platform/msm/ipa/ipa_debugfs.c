@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -58,16 +58,11 @@ const char *ipa_event_name[] = {
 	__stringify(WLAN_CLIENT_CONNECT_EX),
 	__stringify(WLAN_SWITCH_TO_SCC),
 	__stringify(WLAN_SWITCH_TO_MCC),
-	__stringify(WLAN_WDI_ENABLE),
-	__stringify(WLAN_WDI_DISABLE),
 	__stringify(WAN_UPSTREAM_ROUTE_ADD),
 	__stringify(WAN_UPSTREAM_ROUTE_DEL),
 	__stringify(WAN_EMBMS_CONNECT),
-	__stringify(WAN_XLAT_CONNECT),
 	__stringify(ECM_CONNECT),
 	__stringify(ECM_DISCONNECT),
-	__stringify(IPA_TETHERING_STATS_UPDATE_STATS),
-	__stringify(IPA_TETHERING_STATS_UPDATE_NETWORK_STATS),
 };
 
 const char *ipa_hdr_l2_type_name[] = {
@@ -1271,7 +1266,6 @@ static ssize_t ipa_read_nat4(struct file *file,
 	u32 tbl_size, *tmp;
 	u32 value, i, j, rule_id;
 	u16 enable, tbl_entry, flag;
-	u32 no_entrys = 0;
 
 	value = ipa_ctx->nat_mem.public_ip_addr;
 	pr_err(
@@ -1285,7 +1279,7 @@ static ssize_t ipa_read_nat4(struct file *file,
 				ipa_ctx->nat_mem.size_base_tables);
 
 	pr_err("Expansion Table Size:%d\n",
-				ipa_ctx->nat_mem.size_expansion_tables-1);
+				ipa_ctx->nat_mem.size_expansion_tables);
 
 	if (!ipa_ctx->nat_mem.is_sys_mem)
 		pr_err("Not supported for local(shared) memory\n");
@@ -1299,7 +1293,7 @@ static ssize_t ipa_read_nat4(struct file *file,
 
 			pr_err("\nBase Table:\n");
 		} else {
-			tbl_size = ipa_ctx->nat_mem.size_expansion_tables-1;
+			tbl_size = ipa_ctx->nat_mem.size_expansion_tables;
 			base_tbl =
 			 (u32 *)ipa_ctx->nat_mem.ipv4_expansion_rules_addr;
 
@@ -1313,7 +1307,6 @@ static ssize_t ipa_read_nat4(struct file *file,
 				enable = ((value & 0xFFFF0000) >> 16);
 
 				if (enable & NAT_ENTRY_ENABLE) {
-					no_entrys++;
 					pr_err("Rule:%d ", rule_id);
 
 					value = *tmp;
@@ -1398,7 +1391,7 @@ static ssize_t ipa_read_nat4(struct file *file,
 
 			pr_err("\nIndex Table:\n");
 		} else {
-			tbl_size = ipa_ctx->nat_mem.size_expansion_tables-1;
+			tbl_size = ipa_ctx->nat_mem.size_expansion_tables;
 			indx_tbl =
 			 (u32 *)ipa_ctx->nat_mem.index_table_expansion_addr;
 
@@ -1425,7 +1418,6 @@ static ssize_t ipa_read_nat4(struct file *file,
 			}
 		}
 	}
-	pr_err("Current No. Nat Entries: %d\n", no_entrys);
 
 	return 0;
 }
