@@ -373,12 +373,15 @@ LINUXINCLUDE    := \
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 
+FRANKEN_CFLAGS := -march=armv8-a+crc+crypto -mtune=cortex-a57.cortex-a53 -mcpu=cortex-a57.cortex-a53 \
+		--param l1-cache-size=32 --param l1-cache-line-size=64 --param l2-cache-size=2048 \
+		--param simultaneous-prefetches=6 --param prefetch-latency=400 -ffast-math
+
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
-		   -fno-delete-null-pointer-checks \
-		   -std=gnu89
+		   -std=gnu89 $(FRANKEN_CFLAGS)
 
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
