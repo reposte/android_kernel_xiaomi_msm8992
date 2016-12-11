@@ -304,7 +304,7 @@ EXPORT_SYMBOL(kgsl_mem_entry_destroy);
  * @returns - 0 on success else error code
  *
  * This function should be called with processes memory spinlock held
-*/
+ */
 static int
 kgsl_mem_entry_track_gpuaddr(struct kgsl_process_private *process,
 				struct kgsl_mem_entry *entry)
@@ -336,7 +336,7 @@ done:
 }
 
 static void kgsl_mem_entry_commit_mem_list(struct kgsl_process_private *process,
-				struct kgsl_mem_entry *entry)
+						struct kgsl_mem_entry *entry)
 {
 	struct rb_node **node;
 	struct rb_node *parent = NULL;
@@ -363,7 +363,7 @@ static void kgsl_mem_entry_commit_mem_list(struct kgsl_process_private *process,
 }
 
 static void kgsl_mem_entry_commit_process(struct kgsl_process_private *process,
-				struct kgsl_mem_entry *entry)
+						struct kgsl_mem_entry *entry)
 {
 	if (!entry)
 		return;
@@ -4697,9 +4697,8 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 	disable_irq(device->pwrctrl.interrupt_num);
 
 	KGSL_DRV_INFO(device,
-		"dev_id %d regs phys 0x%08lx size 0x%08x virt %p\n",
-		device->id, device->reg_phys, device->reg_len,
-		device->reg_virt);
+		"dev_id %d regs phys 0x%08lx size 0x%08x\n",
+		device->id, device->reg_phys, device->reg_len);
 
 	rwlock_init(&device->context_lock);
 
@@ -4838,6 +4837,8 @@ static void kgsl_core_exit(void)
 static int __init kgsl_core_init(void)
 {
 	int result = 0;
+	struct sched_param param = { .sched_priority = 2 };
+
 	/* alloc major and minor device numbers */
 	result = alloc_chrdev_region(&kgsl_driver.major, 0, KGSL_DEVICE_MAX,
 		"kgsl");
@@ -4899,6 +4900,18 @@ static int __init kgsl_core_init(void)
 
 	kgsl_mmu_set_mmutype(ksgl_mmu_type);
 
+	init_kthread_worker(&kgsl_driver.worker);
+
+	kgsl_driver.worker_thread = kthread_run(kthread_worker_fn,
+		&kgsl_driver.worker, "kgsl_worker_thread");
+
+	if (IS_ERR(kgsl_driver.worker_thread)) {
+		pr_err("unable to start kgsl thread\n");
+		goto err;
+	}
+
+	sched_setscheduler(kgsl_driver.worker_thread, SCHED_FIFO, &param);
+
 	kgsl_events_init();
 
 	/* create the memobjs kmem cache */
@@ -4910,6 +4923,8 @@ static int __init kgsl_core_init(void)
 	}
 
 	kgsl_memfree_init();
+
+	kgsl_heap_init();
 
 	return 0;
 
