@@ -120,11 +120,6 @@ int cpuidle_idle_call(void)
 	struct cpuidle_driver *drv;
 	int next_state, entered_state;
 
-	if (need_resched()) {
-		local_irq_enable();
-		return 0;
-	}
-
 	if (off)
 		return -ENODEV;
 
@@ -139,9 +134,6 @@ int cpuidle_idle_call(void)
 
 	/* ask the governor for the next state */
 	next_state = cpuidle_curr_governor->select(drv, dev);
-	if (next_state < 0)
-		return -EBUSY;
-
 	if (need_resched()) {
 		dev->last_residency = 0;
 		/* give the governor an opportunity to reflect on the outcome */

@@ -11,11 +11,11 @@
 
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
-#include <linux/err.h>
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/sort.h>
+#include <linux/err.h>
+#include <linux/of.h>
 #include <linux/sched.h>
 #include <asm/cputime.h>
 
@@ -511,16 +511,6 @@ static void create_all_freq_table(void)
 	return;
 }
 
-static void free_all_freq_table(void)
-{
-	if (all_freq_table) {
-		kfree(all_freq_table->freq_table);
-		all_freq_table->freq_table = NULL;
-		kfree(all_freq_table);
-		all_freq_table = NULL;
-	}
-}
-
 static void add_all_freq_table(unsigned int freq)
 {
 	unsigned int size;
@@ -584,10 +574,10 @@ static void cpufreq_allstats_create(unsigned int cpu,
 static int cpufreq_stat_notifier_policy(struct notifier_block *nb,
 		unsigned long val, void *data)
 {
-	int ret = 0, count = 0, i;
+	int ret, count = 0, i;
 	struct cpufreq_policy *policy = data;
 	struct cpufreq_frequency_table *table;
-	unsigned int cpu = policy->cpu;
+	unsigned int cpu_num, cpu = policy->cpu;
 
 	if (val == CPUFREQ_UPDATE_POLICY_CPU) {
 		cpufreq_stats_update_policy_cpu(policy);
@@ -609,8 +599,10 @@ static int cpufreq_stat_notifier_policy(struct notifier_block *nb,
 	if (!per_cpu(all_cpufreq_stats, cpu))
 		cpufreq_allstats_create(cpu, table, count);
 
-	if (!per_cpu(cpufreq_power_stats, cpu))
-		cpufreq_powerstats_create(cpu, table, count);
+	for_each_possible_cpu(cpu_num) {
+		if (!per_cpu(cpufreq_power_stats, cpu_num))
+			cpufreq_powerstats_create(cpu_num, table, count);
+	}
 
 	if (val == CPUFREQ_CREATE_POLICY)
 		ret = __cpufreq_stats_create_table(policy, table, count);
@@ -624,7 +616,7 @@ static void cpufreq_stats_create_table(unsigned int cpu)
 {
 	struct cpufreq_policy *policy;
 	struct cpufreq_frequency_table *table;
-	int i, count = 0;
+	int i, cpu_num, count = 0;
 	/*
 	 * "likely(!policy)" because normally cpufreq_stats will be registered
 	 * before cpufreq driver
@@ -638,16 +630,17 @@ static void cpufreq_stats_create_table(unsigned int cpu)
 		for (i = 0; table[i].frequency != CPUFREQ_TABLE_END; i++) {
 			unsigned int freq = table[i].frequency;
 
-			if (freq == CPUFREQ_ENTRY_INVALID)
-				continue;
-			count++;
+			if (freq != CPUFREQ_ENTRY_INVALID)
+				count++;
 		}
 
 		if (!per_cpu(all_cpufreq_stats, cpu))
 			cpufreq_allstats_create(cpu, table, count);
 
-		if (!per_cpu(cpufreq_power_stats, cpu))
-			cpufreq_powerstats_create(cpu, table, count);
+		for_each_possible_cpu(cpu_num) {
+			if (!per_cpu(cpufreq_power_stats, cpu))
+				cpufreq_powerstats_create(cpu, table, count);
+		}
 
 		__cpufreq_stats_create_table(policy, table, count);
 	}
@@ -709,8 +702,6 @@ static int __init cpufreq_stats_init(void)
 	if (ret)
 		return ret;
 
-	create_all_freq_table();
-
 	for_each_online_cpu(cpu)
 		cpufreq_stats_create_table(cpu);
 
@@ -721,10 +712,10 @@ static int __init cpufreq_stats_init(void)
 				CPUFREQ_POLICY_NOTIFIER);
 		for_each_online_cpu(cpu)
 			cpufreq_stats_free_table(cpu);
-		free_all_freq_table();
 		return ret;
 	}
 
+	create_all_freq_table();
 	ret = cpufreq_sysfs_create_file(&_attr_all_time_in_state.attr);
 	if (ret)
 		pr_warn("Cannot create sysfs file for cpufreq stats\n");
