@@ -803,45 +803,14 @@ typedef struct multicast_addr_list
 
 #define WLAN_HDD_ADAPTER_MAGIC 0x574c414e //ASCII "WLAN"
 
-/**
- * struct hdd_runtime_pm_context - context to prevent/allow runtime pm
- * @scan: scan context to prevent/allow runtime pm
- * @roc : remain on channel runtime pm context
- * @dfs : Dynamic frequency selection runtime pm context
- *
- * Prevent Runtime PM for scan, roc and dfs.
- */
-struct hdd_runtime_pm_context {
-	void *scan;
-	void *roc;
-	void *dfs;
-};
-
-/**
- * struct hdd_adapter_pm_context - Context/Adapter to prevent/allow runtime pm
- * @connect : Connect context per adapter
- *
- * Structure to hold runtime pm contexts for each adapter
- */
-struct hdd_adapter_pm_context {
-	void *connect;
-};
-
 struct hdd_adapter_s
 {
-   /* Magic cookie for adapter sanity verification.  Note that this
-    * needs to be at the beginning of the private data structure so
-    * that it will exists at the beginning of dev->priv and hence
-    * will always be in mapped memory
-    */
-   v_U32_t magic;
-
    void *pHddCtx;
+
+   device_mode_t device_mode;
 
    /** Handle to the network device */
    struct net_device *dev;
-
-   device_mode_t device_mode;
 
    /** IPv4 notifier callback for handling ARP offload on change in IP */
    struct work_struct  ipv4NotifierWorkQueue;
@@ -958,7 +927,6 @@ struct hdd_adapter_s
 #endif
 
    v_S7_t rssi;
-   int8_t rssi_on_disconnect;
 #ifdef WLAN_FEATURE_LPSS
    v_BOOL_t rssi_send;
 #endif
@@ -981,6 +949,8 @@ struct hdd_adapter_s
 #endif
    uint8_t addr_filter_pattern;
 
+   //Magic cookie for adapter sanity verification
+   v_U32_t magic;
    v_BOOL_t higherDtimTransition;
    v_BOOL_t survey_idx;
 
@@ -1026,7 +996,8 @@ struct hdd_adapter_s
     /* Time stamp for last completed RoC request */
     v_TIME_t lastRocTs;
 
-	struct hdd_adapter_pm_context runtime_context;
+    /* work queue to defer the back to back p2p_listen */
+    struct delayed_work roc_work;
 };
 
 #define WLAN_HDD_GET_STATION_CTX_PTR(pAdapter) (&(pAdapter)->sessionCtx.station)
@@ -1478,8 +1449,6 @@ struct hdd_context_s
     /* Time since boot up to extscan start (in micro seconds) */
     v_U64_t ext_scan_start_since_boot;
 
-    /* RoC request queue and work */
-    struct delayed_work rocReqWork;
 #ifdef FEATURE_WLAN_EXTSCAN
     struct hdd_ext_scan_context ext_scan_context;
 #endif /* FEATURE_WLAN_EXTSCAN */
@@ -1502,6 +1471,8 @@ struct hdd_context_s
     /* Is htTxSTBC supported by target */
     uint8_t   ht_tx_stbc_supported;
 
+    /* RoC request queue and work */
+    struct work_struct rocReqWork;
     hdd_list_t hdd_roc_req_q;
 
 #ifdef WLAN_FEATURE_OFFLOAD_PACKETS
@@ -1514,8 +1485,6 @@ struct hdd_context_s
 #endif
     /* IPv4 notifier callback for handling ARP offload on change in IP */
     struct notifier_block ipv4_notifier;
-    
-    struct hdd_runtime_pm_context runtime_context;
 };
 
 /*---------------------------------------------------------------------------
@@ -1594,6 +1563,7 @@ void wlan_hdd_reset_prob_rspies(hdd_adapter_t* pHostapdAdapter);
 void hdd_prevent_suspend(uint32_t reason);
 void hdd_allow_suspend(uint32_t reason);
 void hdd_prevent_suspend_timeout(v_U32_t timeout, uint32_t reason);
+void hdd_allow_runtime_suspend(void);
 bool hdd_is_ssr_required(void);
 void hdd_set_ssr_required(e_hdd_ssr_required value);
 
@@ -1732,11 +1702,4 @@ bool hdd_is_memdump_supported(void);
 
 const char *hdd_get_fwpath(void);
 
-void hdd_connect_result(struct net_device *dev, const u8 *bssid,
-			const u8 *req_ie, size_t req_ie_len,
-			const u8 * resp_ie, size_t resp_ie_len,
-			u16 status, gfp_t gfp);
-
-void hdd_runtime_suspend_init(hdd_context_t *);
-void hdd_runtime_suspend_deinit(hdd_context_t *);
 #endif    // end #if !defined( WLAN_HDD_MAIN_H )

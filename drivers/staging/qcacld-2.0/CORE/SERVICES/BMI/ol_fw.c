@@ -57,6 +57,9 @@
 #include "qwlan_version.h"
 
 #ifdef FEATURE_SECURE_FIRMWARE
+#define MAX_FIRMWARE_SIZE (1*1024*1024)
+
+static u8 fw_mem[MAX_FIRMWARE_SIZE];
 static struct hash_fw fw_hash;
 #endif
 
@@ -364,9 +367,8 @@ exit:
 }
 
 #ifdef FEATURE_SECURE_FIRMWARE
-static int ol_check_fw_hash(const u8* data, u32 fw_size, ATH_BIN_FILE file)
+static int ol_check_fw_hash(const u8* data, u32 data_size, ATH_BIN_FILE file)
 {
-	u8 *fw_mem = NULL;
 	u8 *hash = NULL;
 #ifdef CONFIG_CNSS
 	u8 digest[SHA256_DIGEST_SIZE];
@@ -403,18 +405,8 @@ static int ol_check_fw_hash(const u8* data, u32 fw_size, ATH_BIN_FILE file)
 		goto end;
 	}
 
-	fw_mem = (u8 *)cnss_get_fw_ptr();
-
-	if (!fw_mem || (fw_size > MAX_FIRMWARE_SIZE)) {
-		pr_err("No enough memory to copy FW data\n");
-		ret = A_ERROR;
-		goto end;
-	}
-
-	OS_MEMCPY(fw_mem, data, fw_size);
-
 #ifdef CONFIG_CNSS
-	ret = cnss_get_sha_hash(fw_mem, fw_size, "sha256", digest);
+	ret = cnss_get_sha_hash(data, data_size, "sha256", digest);
 
 	if (ret) {
 		pr_err("Sha256 Hash computation fialed err:%d\n", ret);
@@ -605,6 +597,14 @@ static int __ol_transfer_bin_file(struct ol_softc *scn, ATH_BIN_FILE file,
 	tempEeprom = NULL;
 
 #ifdef FEATURE_SECURE_FIRMWARE
+	if (fw_entry_size <= MAX_FIRMWARE_SIZE) {
+		OS_MEMCPY(fw_mem, fw_entry->data, fw_entry_size);
+	} else {
+		pr_err("%s: No enough memory to copy FW data!", __func__);
+		status = A_ERROR;
+		goto end;
+	}
+
 	if (scn->enable_fw_hash_check &&
 	    ol_check_fw_hash(fw_entry->data, fw_entry_size, file)) {
 		pr_err("Hash Check failed for file:%s\n", filename);
@@ -884,9 +884,7 @@ out:
 static void ramdump_work_handler(struct work_struct *ramdump)
 {
 #if !defined(HIF_SDIO)
-#ifdef DEBUG
 	int ret;
-#endif
 #endif
 	u_int32_t host_interest_address;
 	u_int32_t dram_dump_values[4];
@@ -2345,7 +2343,6 @@ u_int8_t ol_get_number_of_peers_supported(struct ol_softc *scn)
 
 	switch (scn->target_version) {
 		case AR6320_REV1_1_VERSION:
-		case AR6320_REV2_1_VERSION:
 			if(scn->max_no_of_peers > MAX_SUPPORTED_PEERS_REV1_1)
 				max_no_of_peers = MAX_SUPPORTED_PEERS_REV1_1;
 			else

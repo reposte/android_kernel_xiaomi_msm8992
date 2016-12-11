@@ -189,7 +189,7 @@ static const hdd_freq_chan_map_t freq_chan_map[] = { {2412, 1}, {2417, 2},
 #define WE_TXRX_FWSTATS_RESET           41
 #define WE_SET_MAX_TX_POWER_2_4   42
 #define WE_SET_MAX_TX_POWER_5_0   43
-/* 44 is unused */
+#define WE_SET_POWER_GATING       44
 /* Private ioctl for packet power save */
 #define  WE_PPS_PAID_MATCH              45
 #define  WE_PPS_GID_MATCH               46
@@ -240,7 +240,6 @@ static const hdd_freq_chan_map_t freq_chan_map[] = { {2412, 1}, {2417, 2},
 #define WE_SET_EARLY_RX_DRIFT_SAMPLE          82
 /* Private ioctl for packet power save */
 #define WE_PPS_5G_EBT                         83
-#define WE_SET_CTS_CBW                        84
 
 /* Private ioctls and their sub-ioctls */
 #define WLAN_PRIV_SET_NONE_GET_INT    (SIOCIWFIRSTPRIV + 1)
@@ -272,7 +271,7 @@ static const hdd_freq_chan_map_t freq_chan_map[] = { {2412, 1}, {2417, 2},
 #define WE_GET_AMSDU         28
 #define WE_GET_TXPOW_2G      29
 #define WE_GET_TXPOW_5G      30
-/* 31 is unused */
+#define WE_GET_POWER_GATING  31
 #define WE_GET_PPS_PAID_MATCH           32
 #define WE_GET_PPS_GID_MATCH            33
 #define WE_GET_PPS_EARLY_TIM_CLEAR      34
@@ -1082,21 +1081,6 @@ VOS_STATUS wlan_hdd_get_rssi(hdd_adapter_t *pAdapter, v_S7_t *rssi_value)
    pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
    pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(pAdapter);
 
-   if (eConnectionState_Associated != pHddStaCtx->conn_info.connState) {
-       hddLog(LOG1, "%s: Not associated, rssi on disconnect %d",
-                    __func__, pAdapter->rssi_on_disconnect);
-       *rssi_value = pAdapter->rssi_on_disconnect;
-       return VOS_STATUS_SUCCESS;
-   }
-
-   if (VOS_TRUE == pHddStaCtx->hdd_ReassocScenario)
-   {
-       VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
-                 "%s: Roaming in progress, return cached RSSI", __func__);
-       *rssi_value = pAdapter->rssi;
-       return VOS_STATUS_SUCCESS;
-   }
-
    init_completion(&context.completion);
    context.pAdapter = pAdapter;
    context.magic = RSSI_CONTEXT_MAGIC;
@@ -1815,17 +1799,9 @@ static int iw_get_name(struct net_device *dev,
     return 0;
 }
 
-/**
- * __iw_set_mode() - SIOCSIWMODE ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_mode(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_set_mode(struct net_device *dev,
+                             struct iw_request_info *info,
+                             union iwreq_data *wrqu, char *extra)
 {
     hdd_wext_state_t         *pWextState;
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
@@ -1898,46 +1874,17 @@ static int __iw_set_mode(struct net_device *dev, struct iw_request_info *info,
                      hddLog(VOS_TRACE_LEVEL_ERROR,
                             FL("failed wait on disconnect_comp_var"));
             }
-        }
+}
     }
 
     EXIT();
     return 0;
 }
 
-/**
- * iw_set_mode() - SSR wrapper for __iw_set_mode()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_mode(struct net_device *dev, struct iw_request_info *info,
-		       union iwreq_data *wrqu, char *extra)
-{
-	int ret;
 
-	vos_ssr_protect(__func__);
-	ret = __iw_set_mode(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_get_mode() - SIOCGIWMODE ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
 static int
-__iw_get_mode(struct net_device *dev, struct iw_request_info *info,
-	      union iwreq_data *wrqu, char *extra)
+iw_get_mode(struct net_device *dev, struct iw_request_info *info,
+            union iwreq_data *wrqu, char *extra)
 {
     hdd_wext_state_t *pWextState;
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
@@ -1973,38 +1920,8 @@ __iw_get_mode(struct net_device *dev, struct iw_request_info *info,
     return 0;
 }
 
-/**
- * iw_get_mode() - SSR wrapper for __iw_get_mode()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_mode(struct net_device *dev, struct iw_request_info *info,
-		       union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_mode(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_set_freq() - SIOCSIWFREQ ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_freq(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
+             union iwreq_data *wrqu, char *extra)
 {
     v_U32_t numChans = 0;
     v_U8_t validChan[WNI_CFG_VALID_CHANNEL_LIST_LEN];
@@ -2102,38 +2019,8 @@ static int __iw_set_freq(struct net_device *dev, struct iw_request_info *info,
     return status;
 }
 
-/**
- * iw_set_freq() - SSR wrapper for __iw_set_freq()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_freq(struct net_device *dev, struct iw_request_info *info,
-		       union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_set_freq(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_get_freq() - SIOCGIWFREQ ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @fwrq: ioctl frequency data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_get_freq(struct net_device *dev, struct iw_request_info *info,
-			 struct iw_freq *fwrq, char *extra)
+static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
+             struct iw_freq *fwrq, char *extra)
 {
    v_U32_t status = FALSE, channel = 0, freq = 0;
    hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
@@ -2186,39 +2073,9 @@ static int __iw_get_freq(struct net_device *dev, struct iw_request_info *info,
    return 0;
 }
 
-/**
- * iw_get_freq() - SSR wrapper for __iw_get_freq()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @fwrq: pointer to frequency data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_freq(struct net_device *dev, struct iw_request_info *info,
-		       struct iw_freq *fwrq, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_freq(dev, info, fwrq, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_get_tx_power() - SIOCGIWTXPOW ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_get_tx_power(struct net_device *dev,
-			     struct iw_request_info *info,
-			     union iwreq_data *wrqu, char *extra)
+static int iw_get_tx_power(struct net_device *dev,
+                           struct iw_request_info *info,
+                           union iwreq_data *wrqu, char *extra)
 {
 
    hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
@@ -2243,40 +2100,9 @@ static int __iw_get_tx_power(struct net_device *dev,
    return 0;
 }
 
-/**
- * iw_get_tx_power() - SSR wrapper for __iw_get_tx_power()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_tx_power(struct net_device *dev,
-			   struct iw_request_info *info,
-			   union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_tx_power(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_set_tx_power() - SIOCSIWTXPOW ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_tx_power(struct net_device *dev,
-			     struct iw_request_info *info,
-			     union iwreq_data *wrqu, char *extra)
+static int iw_set_tx_power(struct net_device *dev,
+                           struct iw_request_info *info,
+                           union iwreq_data *wrqu, char *extra)
 {
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(pAdapter);
@@ -2301,40 +2127,9 @@ static int __iw_set_tx_power(struct net_device *dev,
     return 0;
 }
 
-/**
- * iw_set_tx_power() - SSR wrapper for __iw_set_tx_power()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_tx_power(struct net_device *dev,
-			   struct iw_request_info *info,
-			   union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_set_tx_power(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_get_bitrate() - SIOCGIWRATE ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_get_bitrate(struct net_device *dev,
-			    struct iw_request_info *info,
-			    union iwreq_data *wrqu, char *extra)
+static int iw_get_bitrate(struct net_device *dev,
+                          struct iw_request_info *info,
+                          union iwreq_data *wrqu, char *extra)
 {
    VOS_STATUS vos_status = VOS_STATUS_SUCCESS;
    eHalStatus status = eHAL_STATUS_SUCCESS;
@@ -2391,42 +2186,12 @@ static int __iw_get_bitrate(struct net_device *dev,
 
    return vos_status;
 }
+/* ccm call back function */
 
-/**
- * iw_get_bitrate() - SSR wrapper for __iw_get_bitrate()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_bitrate(struct net_device *dev,
-			  struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_bitrate(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_set_bitrate() - SIOCSIWRATE ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_bitrate(struct net_device *dev,
-			    struct iw_request_info *info,
-			    union iwreq_data *wrqu,
-			    char *extra)
+static int iw_set_bitrate(struct net_device *dev,
+                          struct iw_request_info *info,
+                          union iwreq_data *wrqu,
+                          char *extra)
 {
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     hdd_wext_state_t *pWextState;
@@ -2499,39 +2264,11 @@ static int __iw_set_bitrate(struct net_device *dev,
     return 0;
 }
 
-/**
- * iw_set_bitrate() - SSR wrapper for __iw_set_bitrate()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_bitrate(struct net_device *dev,
-			  struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
-{
-	int ret;
 
-	vos_ssr_protect(__func__);
-	ret = __iw_set_bitrate(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_set_genie() - SIOCSIWGENIE ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_genie(struct net_device *dev, struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
+static int iw_set_genie(struct net_device *dev,
+        struct iw_request_info *info,
+        union iwreq_data *wrqu,
+        char *extra)
 {
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     hdd_wext_state_t *pWextState = WLAN_HDD_GET_WEXT_STATE_PTR(pAdapter);
@@ -2674,39 +2411,10 @@ exit:
     return ret;
 }
 
-/**
- * iw_set_genie() - SSR wrapper for __iw_set_genie()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_genie(struct net_device *dev,
-			 struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_set_genie(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_get_genie() - SIOCGIWGENIE ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_get_genie(struct net_device *dev, struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
+static int iw_get_genie(struct net_device *dev,
+                        struct iw_request_info *info,
+                        union iwreq_data *wrqu,
+                        char *extra)
 {
     hdd_wext_state_t *pWextState;
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
@@ -2760,39 +2468,9 @@ static int __iw_get_genie(struct net_device *dev, struct iw_request_info *info,
     return 0;
 }
 
-/**
- * iw_get_genie() - SSR wrapper for __iw_get_genie()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_genie(struct net_device *dev,
-			 struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_genie(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_get_encode() - SIOCGIWENCODE ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @dwrq: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_get_encode(struct net_device *dev, struct iw_request_info *info,
-                           struct iw_point *dwrq, char *extra)
+static int iw_get_encode(struct net_device *dev,
+                       struct iw_request_info *info,
+                       struct iw_point *dwrq, char *extra)
 {
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     hdd_wext_state_t *pWextState = WLAN_HDD_GET_WEXT_STATE_PTR(pAdapter);
@@ -2861,27 +2539,6 @@ static int __iw_get_encode(struct net_device *dev, struct iw_request_info *info,
     return 0;
 }
 
-/**
- * iw_get_encode() - SSR wrapper for __iw_get_encode()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @dwrq: pointer to encoding information
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_encode(struct net_device *dev, struct iw_request_info *info,
-			 struct iw_point *dwrq, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_encode(dev, info, dwrq, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
 #define PAE_ROLE_AUTHENTICATOR 1 // =1 for authenticator,
 #define PAE_ROLE_SUPPLICANT 0 // =0 for supplicant
 
@@ -2890,18 +2547,9 @@ static int iw_get_encode(struct net_device *dev, struct iw_request_info *info,
  * This function sends a single 'key' to LIM at all time.
  */
 
-/**
- * __iw_get_rts_threshold() - SIOCGIWRTS ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_get_rts_threshold(struct net_device *dev,
-				  struct iw_request_info *info,
-				  union iwreq_data *wrqu, char *extra)
+static int iw_get_rts_threshold(struct net_device *dev,
+            struct iw_request_info *info,
+            union iwreq_data *wrqu, char *extra)
 {
    hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
    v_U32_t status = 0;
@@ -2911,40 +2559,9 @@ static int __iw_get_rts_threshold(struct net_device *dev,
    return status;
 }
 
-/**
- * iw_get_rts_threshold() - SSR wrapper for __iw_get_rts_threshold()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_rts_threshold(struct net_device *dev,
-				struct iw_request_info *info,
-				union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_rts_threshold(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_set_rts_threshold() - SIOCSIWRTS ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_rts_threshold(struct net_device *dev,
-				  struct iw_request_info *info,
-				  union iwreq_data *wrqu, char *extra)
+static int iw_set_rts_threshold(struct net_device *dev,
+                                struct iw_request_info *info,
+                                union iwreq_data *wrqu, char *extra)
 {
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(pAdapter);
@@ -2974,40 +2591,9 @@ static int __iw_set_rts_threshold(struct net_device *dev,
     return 0;
 }
 
-/**
- * iw_set_rts_threshold() - SSR wrapper for __iw_set_rts_threshold()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_rts_threshold(struct net_device *dev,
-				struct iw_request_info *info,
-				union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_set_rts_threshold(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_get_frag_threshold() - SIOCGIWFRAG ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_get_frag_threshold(struct net_device *dev,
-				   struct iw_request_info *info,
-				   union iwreq_data *wrqu, char *extra)
+static int iw_get_frag_threshold(struct net_device *dev,
+                                 struct iw_request_info *info,
+                                 union iwreq_data *wrqu, char *extra)
 {
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     v_U32_t status = 0;
@@ -3017,40 +2603,9 @@ static int __iw_get_frag_threshold(struct net_device *dev,
     return status;
 }
 
-/**
- * iw_get_frag_threshold() - SSR wrapper for __iw_get_frag_threshold()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_frag_threshold(struct net_device *dev,
-				 struct iw_request_info *info,
-				 union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_frag_threshold(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_set_frag_threshold() - SIOCSIWFRAG ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_frag_threshold(struct net_device *dev,
-				   struct iw_request_info *info,
-				   union iwreq_data *wrqu, char *extra)
+static int iw_set_frag_threshold(struct net_device *dev,
+             struct iw_request_info *info,
+                 union iwreq_data *wrqu, char *extra)
 {
    hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
    tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(pAdapter);
@@ -3080,28 +2635,6 @@ static int __iw_set_frag_threshold(struct net_device *dev,
    return 0;
 }
 
-/**
- * iw_set_frag_threshold() - SSR wrapper for __iw_set_frag_threshold()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_frag_threshold(struct net_device *dev,
-				 struct iw_request_info *info,
-				 union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_set_frag_threshold(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
 static int iw_get_power_mode(struct net_device *dev,
                              struct iw_request_info *info,
                              union iwreq_data *wrqu, char *extra)
@@ -3118,17 +2651,8 @@ static int iw_set_power_mode(struct net_device *dev,
     return -EOPNOTSUPP;
 }
 
-/**
- * __iw_get_range() - SIOCGIWRANGE ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_get_range(struct net_device *dev, struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
+static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
+                        union iwreq_data *wrqu, char *extra)
 {
    hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
    tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(pAdapter);
@@ -3275,27 +2799,6 @@ static int __iw_get_range(struct net_device *dev, struct iw_request_info *info,
 
    EXIT();
    return 0;
-}
-
-/**
- * iw_get_range() - SSR wrapper for __iw_get_range()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_range(struct net_device *dev, struct iw_request_info *info,
-			union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_range(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
 }
 
 /* Callback function registered with PMC to know status of PMC request */
@@ -3833,6 +3336,13 @@ static int iw_softap_set_channel_range( struct net_device *dev,
     tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(pHostapdAdapter);
     hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pHostapdAdapter);
 
+    if (!capable(CAP_NET_ADMIN))
+    {
+        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+                  FL("permission check failed"));
+        return -EPERM;
+    }
+
     status = WLANSAP_SetChannelRange(hHal, startChannel, endChannel, band);
 
     if (VOS_STATUS_SUCCESS != status)
@@ -4074,17 +3584,9 @@ void* wlan_hdd_change_country_code_callback(void *pAdapter)
     return NULL;
 }
 
-/**
- * __iw_set_priv() - SIOCSIWPRIV ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_priv(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_set_priv(struct net_device *dev,
+                       struct iw_request_info *info,
+                       union iwreq_data *wrqu, char *extra)
 {
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     char *cmd = NULL;
@@ -4428,28 +3930,6 @@ done:
     return rc;
 }
 
-/**
- * iw_set_priv() - SSR wrapper for __iw_set_priv()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_priv(struct net_device *dev, struct iw_request_info *info,
-		       union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_set_priv(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-
 static int iw_set_nick(struct net_device *dev,
                        struct iw_request_info *info,
                        union iwreq_data *wrqu, char *extra)
@@ -4472,17 +3952,9 @@ static struct iw_statistics *get_wireless_stats(struct net_device *dev)
    return NULL;
 }
 
-/**
- * __iw_set_encode() - SIOCSIWENCODE ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_encode(struct net_device *dev,struct iw_request_info *info,
-			   union iwreq_data *wrqu,char *extra)
+static int iw_set_encode(struct net_device *dev,struct iw_request_info *info,
+                        union iwreq_data *wrqu,char *extra)
+
 {
    hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
    hdd_station_ctx_t *pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(pAdapter);
@@ -4637,40 +4109,10 @@ static int __iw_set_encode(struct net_device *dev,struct iw_request_info *info,
    return 0;
 }
 
-/**
- * iw_set_encode() - SSR wrapper for __iw_set_encode()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_encode(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_set_encode(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_get_encodeext() - SIOCGIWENCODEEXT ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @dwrq: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_get_encodeext(struct net_device *dev,
-			      struct iw_request_info *info,
-			      struct iw_point *dwrq,
-			      char *extra)
+static int iw_get_encodeext(struct net_device *dev,
+               struct iw_request_info *info,
+               struct iw_point *dwrq,
+               char *extra)
 {
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     hdd_wext_state_t  *pWextState =  WLAN_HDD_GET_WEXT_STATE_PTR(pAdapter);
@@ -4752,40 +4194,9 @@ static int __iw_get_encodeext(struct net_device *dev,
 
 }
 
-/**
- * iw_get_encodeext() - SSR wrapper for __iw_get_encodeext()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @dwrq: pointer to encoding information
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_encodeext(struct net_device *dev,
-			    struct iw_request_info *info,
-			    struct iw_point *dwrq, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_encodeext(dev, info, dwrq, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_set_encodeext() - SIOCSIWENCODEEXT ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_encodeext(struct net_device *dev,
-			      struct iw_request_info *info,
-			      union iwreq_data *wrqu, char *extra)
+static int iw_set_encodeext(struct net_device *dev,
+                        struct iw_request_info *info,
+                        union iwreq_data *wrqu, char *extra)
 {
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     hdd_station_ctx_t *pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(pAdapter);
@@ -4985,39 +4396,8 @@ static int __iw_set_encodeext(struct net_device *dev,
    return halStatus;
 }
 
-/**
- * iw_set_encodeext() - SSR wrapper for __iw_set_encodeext()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_encodeext(struct net_device *dev,
-			    struct iw_request_info *info,
-			    union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_set_encodeext(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_set_retry() - SIOCSIWRETRY ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_retry(struct net_device *dev, struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
+static int iw_set_retry(struct net_device *dev, struct iw_request_info *info,
+           union iwreq_data *wrqu, char *extra)
 {
    hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
    tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(pAdapter);
@@ -5073,38 +4453,8 @@ static int __iw_set_retry(struct net_device *dev, struct iw_request_info *info,
 
 }
 
-/**
- * iw_set_retry() - SSR wrapper for __iw_set_retry()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_retry(struct net_device *dev, struct iw_request_info *info,
-			union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_set_retry(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_get_retry() - SIOCGIWRETRY ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_get_retry(struct net_device *dev, struct iw_request_info *info,
-			  union iwreq_data *wrqu, char *extra)
+static int iw_get_retry(struct net_device *dev, struct iw_request_info *info,
+           union iwreq_data *wrqu, char *extra)
 {
    hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
    tHalHandle hHal = WLAN_HDD_GET_HAL_CTX(pAdapter);
@@ -5156,38 +4506,10 @@ static int __iw_get_retry(struct net_device *dev, struct iw_request_info *info,
    return 0;
 }
 
-/**
- * iw_get_retry() - SSR wrapper for __iw_get_retry()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_get_retry(struct net_device *dev, struct iw_request_info *info,
-			union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_get_retry(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
-}
-
-/**
- * __iw_set_mlme() - SIOCSIWMLME ioctl handler
- * @dev: device upon which the ioctl was received
- * @info: ioctl request information
- * @wrqu: ioctl request data
- * @extra: ioctl extra data
- *
- * Return: 0 on success, non-zero on error
- */
-static int __iw_set_mlme(struct net_device *dev, struct iw_request_info *info,
-			 union iwreq_data *wrqu, char *extra)
+static int iw_set_mlme(struct net_device *dev,
+                       struct iw_request_info *info,
+                       union iwreq_data *wrqu,
+                       char *extra)
 {
     hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(dev);
     hdd_station_ctx_t *pHddStaCtx = WLAN_HDD_GET_STATION_CTX_PTR(pAdapter);
@@ -5255,27 +4577,6 @@ static int __iw_set_mlme(struct net_device *dev, struct iw_request_info *info,
 
     return status;
 
-}
-
-/**
- * iw_set_mlme() - SSR wrapper for __iw_set_mlme()
- * @dev: pointer to net_device
- * @info: pointer to iw_request_info
- * @wrqu: pointer to iwreq_data
- * @extra: pointer to extra ioctl payload
- *
- * Return: 0 on success, error number otherwise
- */
-static int iw_set_mlme(struct net_device *dev, struct iw_request_info *info,
-		       union iwreq_data *wrqu, char *extra)
-{
-	int ret;
-
-	vos_ssr_protect(__func__);
-	ret = __iw_set_mlme(dev, info, wrqu, extra);
-	vos_ssr_unprotect(__func__);
-
-	return ret;
 }
 
 int process_wma_set_command(int sessid, int paramid,
@@ -6214,15 +5515,6 @@ static int iw_setint_getnone(struct net_device *dev, struct iw_request_info *inf
            break;
         }
 
-        case WE_SET_CTS_CBW:
-        {
-           hddLog(LOG1, "WE_SET_CTS_CBW val %d", set_value);
-           ret = process_wma_set_command((int)pAdapter->sessionId,
-                                         (int)WMI_PDEV_PARAM_CTS_CBW,
-                                         set_value, PDEV_CMD);
-           break;
-        }
-
         case WE_SET_11N_RATE:
         {
            u_int8_t preamble = 0, nss = 0, rix = 0;
@@ -6351,6 +5643,16 @@ static int iw_setint_getnone(struct net_device *dev, struct iw_request_info *inf
                                            (int)WMI_PDEV_PARAM_TXPOWER_LIMIT5G,
                                            set_value, PDEV_CMD);
              break;
+         }
+
+         case WE_SET_POWER_GATING:
+         {
+              hddLog(LOG1, "WMI_PDEV_PARAM_POWER_GATING_SLEEP val %d",
+                     set_value);
+              ret = process_wma_set_command((int)pAdapter->sessionId,
+                                        (int)WMI_PDEV_PARAM_POWER_GATING_SLEEP,
+                                        (set_value)? true:false, PDEV_CMD);
+              break;
          }
 
          /* Firmware debug log */
@@ -6898,6 +6200,13 @@ static int iw_setchar_getnone(struct net_device *dev, struct iw_request_info *in
 #endif /* WLAN_FEATURE_VOWIFI */
     struct iw_point s_priv_data;
 
+    if (!capable(CAP_NET_ADMIN))
+    {
+        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+                  FL("permission check failed"));
+        return -EPERM;
+    }
+
     if ((WLAN_HDD_GET_CTX(pAdapter))->isLogpInProgress)
     {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_FATAL,
@@ -7374,6 +6683,16 @@ static int iw_setnone_getint(struct net_device *dev, struct iw_request_info *inf
             break;
         }
 
+        case WE_GET_POWER_GATING:
+        {
+            hddLog(LOG1, "GET WMI_PDEV_PARAM_POWER_GATING_SLEEP");
+            *value = wma_cli_get_command(wmapvosContext,
+                                         (int)pAdapter->sessionId,
+                                        (int)WMI_PDEV_PARAM_POWER_GATING_SLEEP,
+                                        PDEV_CMD);
+            break;
+        }
+
 	case WE_GET_PPS_PAID_MATCH:
         {
             hddLog(LOG1, "GET WMI_VDEV_PPS_PAID_MATCH");
@@ -7540,12 +6859,12 @@ int iw_set_three_ints_getnone(struct net_device *dev,
                                   "%s:LOGP in Progress. Ignore!!!", __func__);
         return -EBUSY;
     }
+
     if (!capable(CAP_NET_ADMIN)) {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                   FL("permission check failed"));
         return -EPERM;
     }
-
 
     switch(sub_cmd) {
 
@@ -8214,10 +7533,11 @@ static int __iw_set_var_ints_getnone(struct net_device *dev,
     int cmd = 0;
     int staId = 0;
     struct iw_point s_priv_data;
+
     if (!capable(CAP_NET_ADMIN)) {
-            VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
-                    FL("permission check failed"));
-            return -EPERM;
+        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+                FL("permission check failed"));
+        return -EPERM;
     }
     /* helper function to get iwreq_data with compat handling. */
     if (hdd_priv_get_data(&s_priv_data, wrqu)) {
@@ -8292,13 +7612,6 @@ static int __iw_set_var_ints_getnone(struct net_device *dev,
         case WE_P2P_NOA_CMD:
             {
                 p2p_app_setP2pPs_t p2pNoA;
-
-                if (pAdapter->device_mode != WLAN_HDD_P2P_GO) {
-                    hddLog(LOGE,
-                        FL("Setting NoA is not allowed in Device mode: %d"),
-                        pAdapter->device_mode);
-                    return -EINVAL;
-                }
 
                 p2pNoA.opp_ps = apps_args[0];
                 p2pNoA.ctWindow = apps_args[1];
@@ -8393,8 +7706,10 @@ static int __iw_set_var_ints_getnone(struct net_device *dev,
                     hddLog(LOGE, FL("Invalid MODULE ID %d"), apps_args[0]);
                     return -EINVAL;
                 }
-                if (apps_args[1] > (WMA_MAX_NUM_ARGS)) {
-                    hddLog(LOGE, FL("Too Many args %d"), apps_args[1]);
+
+                if ((apps_args[1] > (WMA_MAX_NUM_ARGS)) ||
+                    (apps_args[1] < 0)) {
+                    hddLog(LOGE, FL("Too Many/Few args %d"), apps_args[1]);
                     return -EINVAL;
                 }
                 unitTestArgs = vos_mem_malloc(sizeof(*unitTestArgs));
@@ -8855,12 +8170,12 @@ static int iw_clear_dynamic_mcbc_filter(struct net_device *dev,
     tpSirWlanSetRxpFilters wlanRxpFilterParam;
     hddLog(VOS_TRACE_LEVEL_INFO_HIGH, "%s: ", __func__);
 
-
     if (!capable(CAP_NET_ADMIN)) {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                  FL("permission check failed"));
         return -EPERM;
     }
+
     //Reset the filter to INI value as we have to clear the dynamic filter
     pHddCtx->configuredMcastBcastFilter = pHddCtx->cfg_ini->mcastBcastFilterSetting;
 
@@ -9437,12 +8752,12 @@ static int iw_set_packet_filter_params(struct net_device *dev,
     tpPacketFilterCfg pRequest = NULL;
     int ret;
     struct iw_point s_priv_data;
+
     if (!capable(CAP_NET_ADMIN)) {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                   FL("permission check failed"));
         return -EPERM;
     }
-
 
     if (hdd_priv_get_data(&s_priv_data, wrqu)) {
        return -EINVAL;
@@ -10158,7 +9473,7 @@ static int iw_set_power_params_priv(struct net_device *dev,
                  FL("permission check failed"));
       return -EPERM;
   }
- /* ODD number is used for set, copy data using copy_from_user */
+  /* ODD number is used for set, copy data using copy_from_user */
   ptr = mem_alloc_copy_from_user_helper(wrqu->data.pointer,
                                         wrqu->data.length);
   if (NULL == ptr)
@@ -10323,9 +9638,6 @@ int iw_set_two_ints_getnone(struct net_device *dev,
     int *value = (int *)extra;
     int sub_cmd = value[0];
     int ret = 0;
-#ifdef DEBUG
-    hdd_context_t *hdd_ctx = WLAN_HDD_GET_CTX(pAdapter);
-#endif
 
     if ((WLAN_HDD_GET_CTX(pAdapter))->isLogpInProgress) {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_FATAL,
@@ -10345,10 +9657,6 @@ int iw_set_two_ints_getnone(struct net_device *dev,
         hddLog(LOGE, "WE_SET_FW_CRASH_INJECT: %d %d", value[1], value[2]);
         pr_err("SSR is triggered by iwpriv CRASH_INJECT: %d %d\n",
                                                 value[1], value[2]);
-        if (!hdd_ctx->cfg_ini->crash_inject_enabled) {
-            hddLog(LOGE, "Crash Inject ini disabled, Ignore Crash Inject");
-            return 0;
-        }
         ret = process_wma_set_command_twoargs((int) pAdapter->sessionId,
                                               (int) GEN_PARAM_CRASH_INJECT,
                                               value[1], value[2], GEN_CMD);
@@ -10621,11 +9929,6 @@ static const struct iw_priv_args we_private_args[] = {
         0,
         "cwmenable" },
 
-    {   WE_SET_CTS_CBW,
-        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
-        0,
-        "cts_cbw" },
-
     {  WE_SET_GTX_HT_MCS,
        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
         0,
@@ -10715,6 +10018,11 @@ static const struct iw_priv_args we_private_args[] = {
         IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
         0,
         "txpow5g" },
+
+    {   WE_SET_POWER_GATING,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0,
+        "pwrgating" },
 
     /* Sub-cmds DBGLOG specific commands */
     {   WE_DBGLOG_LOG_LEVEL ,
@@ -11065,6 +10373,11 @@ static const struct iw_priv_args we_private_args[] = {
         0,
         IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
         "get_txpow5g" },
+
+    {   WE_GET_POWER_GATING,
+        0,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        "get_pwrgating" },
 
     {   WE_GET_PPS_PAID_MATCH,
 	0,
@@ -11767,17 +11080,13 @@ int hdd_register_wext(struct net_device *dev)
 
 int hdd_UnregisterWext(struct net_device *dev)
 {
-	int islocked = rtnl_is_locked();
+	hddLog(LOG1, FL("dev(%p)"), dev);
 
-	VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO, "In %s", __func__);
-
-	if (!islocked)
+	if (dev != NULL) {
 		rtnl_lock();
-
-	dev->wireless_handlers = NULL;
-
-	if (!islocked)
+		dev->wireless_handlers = NULL;
 		rtnl_unlock();
+	}
 
 	return 0;
 }

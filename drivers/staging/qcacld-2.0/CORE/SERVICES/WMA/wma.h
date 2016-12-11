@@ -388,11 +388,11 @@ typedef struct {
 	u_int32_t ani_ofdm_level;
 	u_int32_t ani_cck_level;
 	u_int32_t cwmenable;
-	u_int32_t cts_cbw;
 	u_int32_t txchainmask;
 	u_int32_t rxchainmask;
 	u_int32_t txpow2g;
 	u_int32_t txpow5g;
+	u_int32_t pwrgating;
 	u_int32_t burst_enable;
 	u_int32_t burst_dur;
 } pdev_cli_config_t;
@@ -595,17 +595,11 @@ typedef struct {
 	u_int32_t ibssPs1RxChainInAtimEnable;
 }ibss_power_save_params;
 
-struct wma_runtime_pm_context {
-	void *ap;
-	void *resume;
-};
-
 typedef struct {
 	void *wmi_handle;
 	void *htc_handle;
 	void *vos_context;
 	void *mac_context;
-	void *runtime_pm_ctx;
 
 	vos_event_t wma_ready_event;
 	vos_event_t wma_resume_event;
@@ -746,10 +740,6 @@ typedef struct {
 
 	u_int8_t dfs_phyerr_filter_offload;
 	v_BOOL_t suitable_ap_hb_failure;
-	/* record the RSSI when suitable_ap_hb_failure for later usage to
-	 * report RSSI at beacon miss scenario
-	 */
-	uint32_t suitable_ap_hb_failure_rssi;
 
 	/* IBSS Power Save config Parameters */
 	ibss_power_save_params wma_ibss_power_save_params;
@@ -774,6 +764,7 @@ typedef struct {
 #endif
 	vos_timer_t log_completion_timer;
 	uint16_t self_gen_frm_pwr;
+	bool tx_chain_mask_cck;
 
 	uint32_t num_of_diag_events_logs;
 	uint32_t *events_logs_list;
@@ -791,10 +782,6 @@ typedef struct {
 	uint32_t wow_ipv6_mcast_ns_stats;
 	uint32_t wow_ipv6_mcast_na_stats;
 
-	uint32_t wow_wakeup_enable_mask;
-	uint32_t wow_wakeup_disable_mask;
-
-	struct wma_runtime_pm_context runtime_context;
 }t_wma_handle, *tp_wma_handle;
 
 struct wma_target_cap {
@@ -1182,7 +1169,6 @@ u_int16_t get_regdmn_5g(u_int32_t reg_dmn);
 #define WMA_FW_TX_CONCISE_STATS 0x5
 #define WMA_FW_TX_RC_STATS	0x6
 #define WMA_FW_RX_REM_RING_BUF 0xc
-#define WMA_FW_RX_TXBF_MUSU_NDPA 0xf
 
 /*
  * Setting the Tx Comp Timeout to 1 secs.
@@ -1632,7 +1618,4 @@ void wma_send_flush_logs_to_fw(tp_wma_handle wma_handle);
 
 int wma_crash_inject(tp_wma_handle wma_handle, uint32_t type,
 			uint32_t delay_time_ms);
-
-uint32_t wma_get_vht_ch_width(void);
-
 #endif

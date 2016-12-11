@@ -1629,15 +1629,6 @@ typedef enum
 #define CFG_ENABLE_GREEN_AP_FEATURE_DEFAULT ( 1 )
 #endif
 
-/*
- * This INI item is used to control subsystem restart(SSR) test framework
- * Set its value to 1 to enable APPS trigerred SSR testing
- */
-#define CFG_ENABLE_CRASH_INJECT         "gEnableForceTargetAssert"
-#define CFG_ENABLE_CRASH_INJECT_MIN     (0)
-#define CFG_ENABLE_CRASH_INJECT_MAX     (1)
-#define CFG_ENABLE_CRASH_INJECT_DEFAULT (0)
-
 #ifdef FEATURE_WLAN_FORCE_SAP_SCC
 #define CFG_SAP_SCC_CHAN_AVOIDANCE         "gSapSccChanAvoidance"
 #define CFG_SAP_SCC_CHAN_AVOIDANCE_MIN     ( 0 )
@@ -2532,47 +2523,6 @@ This feature requires the dependent cfg.ini "gRoamPrefer5GHz" set to 1 */
 #define CFG_RX_HANDLE_DEFAULT                      (WLAN_HDD_RX_HANDLE_RX_THREAD)
 #endif /* MDM_PLATFORM */
 
-/* List of RPS CPU maps for different rx queues registered by WLAN driver
- * Ref - Kernel/Documentation/networking/scaling.txt
- * RPS CPU map for a particular RX queue, selects CPU(s) for bottom half
- * processing of RX packets. For example, for a system with 4 CPUs,
- * 0xe: Use CPU1 - CPU3 and donot use CPU0.
- * 0x0: RPS is disabled, packets are processed on the interrupting CPU.
-.*
- * WLAN driver registers NUM_TX_QUEUES queues for tx and rx each during
- * alloc_netdev_mq. Hence, we need to have a cpu mask for each of the rx queues.
- *
- * For example, if the NUM_TX_QUEUES is 4, a sample WLAN ini entry may look like
- * rpsRxQueueCpuMapList=a.b.c.d
- * For a 4 CPU system (CPU0 - CPU3), this implies:
- * 0xa - (1010) use CPU1, CPU3 for rx queue 0
- * 0xb - (1011) use CPU0, CPU1 and CPU3 for rx queue 1
- * 0xc - (1100) use CPU2, CPU3 for rx queue 2
- * 0xd - (1101) use CPU0, CPU2 and CPU3 for rx queue 3
-
- * In practice, we may want to avoid the cores which are heavily loaded.
- */
-
-/* Name of the ini file entry to specify RPS map for different RX queus */
-#define CFG_RPS_RX_QUEUE_CPU_MAP_LIST_NAME         "rpsRxQueueCpuMapList"
-
-/* Default value of rpsRxQueueCpuMapList. Different platforms may have
- * different configurations for NUM_TX_QUEUES and # of cpus, and will need to
- * configure an appropriate value via ini file. Setting default value to 'e' to
- * avoid use of CPU0 (since its heavily used by other system processes) by rx
- * queue 0, which is currently being used for rx packet processing.
- */
-#define CFG_RPS_RX_QUEUE_CPU_MAP_LIST_DEFAULT      "e"
-
-/* Maximum length of string used to hold a list of cpu maps for various rx
- * queues. Considering a 16 core system with 5 rx queues, a RPS CPU map
- * list may look like -
- * rpsRxQueueCpuMapList = ffff.ffff.ffff.ffff.ffff
- * (all 5 rx queues can be processed on all 16 cores)
- * max string len = 24 + 1(for '\0'). Considering 30 to be on safe side.
- */
-#define CFG_RPS_RX_QUEUE_CPU_MAP_LIST_LEN 30
-
 /* SAR Thermal limit values for 2g and 5g */
 
 #define CFG_SET_TXPOWER_LIMIT2G_NAME               "TxPower2g"
@@ -2933,15 +2883,6 @@ This feature requires the dependent cfg.ini "gRoamPrefer5GHz" set to 1 */
 #define CFG_ENABLE_DEAUTH_TO_DISASSOC_MAP_MAX     ( 1 )
 #define CFG_ENABLE_DEAUTH_TO_DISASSOC_MAP_DEFAULT ( 0 )
 
-/*
- * If last disconnection was due to HB failure and we reconnect
- * to same AP next time, send Deauth before starting connection
- */
-#define CFG_ENABLE_DEAUTH_BEFORE_CONNECTION                  "gSendDeauthBeforeCon"
-#define CFG_ENABLE_DEAUTH_BEFORE_CONNECTION_MIN              (0)
-#define CFG_ENABLE_DEAUTH_BEFORE_CONNECTION_MAX              (1)
-#define CFG_ENABLE_DEAUTH_BEFORE_CONNECTION_DEFAULT          (0)
-
 #define CFG_ENABLE_MAC_ADDR_SPOOFING               "gEnableMacAddrSpoof"
 #define CFG_ENABLE_MAC_ADDR_SPOOFING_MIN           (0)
 #define CFG_ENABLE_MAC_ADDR_SPOOFING_MAX           (1)
@@ -3022,17 +2963,17 @@ This feature requires the dependent cfg.ini "gRoamPrefer5GHz" set to 1 */
 #define CFG_P2P_LISTEN_DEFER_INTERVAL_MAX         (200)
 #define CFG_P2P_LISTEN_DEFER_INTERVAL_DEFAULT     (100)
 
-#ifdef FEATURE_WLAN_EXTSCAN
-/*
- * This ini is added to control the enabling of extscan feature outside of code
- * To enable , gExtScanEnable=1 need to be declared in ini file.
- * Otherwise, Extscan feature will remain disabled.
- */
-#define CFG_EXTSCAN_ALLOWED_NAME                   "gExtScanEnable"
-#define CFG_EXTSCAN_ALLOWED_MIN                    (0)
-#define CFG_EXTSCAN_ALLOWED_MAX                    (1)
-#define CFG_EXTSCAN_ALLOWED_DEF                    (0)
+#define CFG_TX_CHAIN_MASK_CCK          "gCckChainMaskEnable"
+#define CFG_TX_CHAIN_MASK_CCK_MIN      (0)
+#define CFG_TX_CHAIN_MASK_CCK_MAX      (1)
+#define CFG_TX_CHAIN_MASK_CCK_DEFAULT  (0)
 
+#define CFG_TX_CHAIN_MASK_1SS       "gTxChainMask1ss"
+#define CFG_TX_CHAIN_MASK_1SS_MIN      (0)
+#define CFG_TX_CHAIN_MASK_1SS_MAX      (3)
+#define CFG_TX_CHAIN_MASK_1SS_DEFAULT  (1)
+
+#ifdef FEATURE_WLAN_EXTSCAN
 #define CFG_EXTSCAN_PASSIVE_MAX_CHANNEL_TIME_NAME      "gExtScanPassiveMaxChannelTime"
 #define CFG_EXTSCAN_PASSIVE_MAX_CHANNEL_TIME_MIN       (0)
 #define CFG_EXTSCAN_PASSIVE_MAX_CHANNEL_TIME_MAX       (500)
@@ -3062,6 +3003,19 @@ This feature requires the dependent cfg.ini "gRoamPrefer5GHz" set to 1 */
 #define CFG_INFORM_BSS_RSSI_RAW_MIN                (0)
 #define CFG_INFORM_BSS_RSSI_RAW_MAX                (1)
 #define CFG_INFORM_BSS_RSSI_RAW_DEFAULT            (1)
+
+/*
+ * This parameter will configure the first scan bucket
+ * threshold to the mentioned value and all the AP's which
+ * have RSSI under this threshold will fall under this
+ * bucket.
+ * This is a configuration item used to tweak and test the input
+ * for internal algorithm. It should not be modified externally.
+ */
+#define CFG_FIRST_SCAN_BUCKET_THRESHOLD_NAME      "gfirst_scan_bucket_threshold"
+#define CFG_FIRST_SCAN_BUCKET_THRESHOLD_MIN       (-50)
+#define CFG_FIRST_SCAN_BUCKET_THRESHOLD_MAX       (-30)
+#define CFG_FIRST_SCAN_BUCKET_THRESHOLD_DEFAULT   (-30)
 
 /*---------------------------------------------------------------------------
   Type declarations
@@ -3568,7 +3522,6 @@ typedef struct
    v_U32_t                     TxPower5g;
    v_U32_t                     gEnableDebugLog;
    v_U8_t                      rxhandle;
-   uint8_t                     cpu_map_list[CFG_RPS_RX_QUEUE_CPU_MAP_LIST_LEN];
    v_BOOL_t                    fDfsPhyerrFilterOffload;
    v_U8_t                      gSapPreferredChanLocation;
    v_U8_t                      gDisableDfsJapanW53;
@@ -3634,7 +3587,6 @@ typedef struct
    v_BOOL_t                    enableGreenAP;
 #endif
 
-   bool                        crash_inject_enabled;
    v_S31_t                     dfsRadarPriMultiplier;
    v_U8_t                      reorderOffloadSupport;
 
@@ -3693,17 +3645,18 @@ typedef struct
 #endif
    v_BOOL_t                    ignorePeerErpInfo;
    uint16_t                    pkt_err_disconn_th;
+   bool                        tx_chain_mask_cck;
+   uint8_t                     tx_chain_mask_1ss;
    uint16_t                    self_gen_frm_pwr;
 
 #ifdef FEATURE_WLAN_EXTSCAN
-   bool                        extscan_enabled;
    uint32_t                    extscan_passive_max_chn_time;
    uint32_t                    extscan_passive_min_chn_time;
    uint32_t                    extscan_active_max_chn_time;
    uint32_t                    extscan_active_min_chn_time;
 #endif
    uint8_t                     inform_bss_rssi_raw;
-   v_BOOL_t                    sendDeauthBeforeCon;
+   int8_t                      first_scan_bucket_threshold;
 } hdd_config_t;
 
 #ifdef WLAN_FEATURE_MBSSID
@@ -3850,11 +3803,6 @@ void hdd_dfs_indicate_radar(void *context, void *param);
 
 VOS_STATUS hdd_string_to_u8_array( char *str, tANI_U8 *intArray, tANI_U8 *len,
                tANI_U8 intArrayMaxLen );
-
-VOS_STATUS hdd_hex_string_to_u16_array(char *str,
-                  uint16_t *int_array, uint8_t *len, uint8_t int_array_max_len);
-
-
 #ifdef WLAN_FEATURE_MBSSID
 v_VOID_t hdd_mbssid_apply_def_cfg_ini(hdd_adapter_t *pAdapter);
 #endif

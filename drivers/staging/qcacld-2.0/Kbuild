@@ -98,7 +98,7 @@ CONFIG_QCOM_ESE_UPLOAD := y
 # Feature flags which are not (currently) configurable via Kconfig
 
 #Whether to build debug version
-BUILD_DEBUG_VERSION ?= 1
+BUILD_DEBUG_VERSION := 1
 
 #Enable this flag to build driver in diag version
 BUILD_DIAG_VERSION := 1
@@ -226,6 +226,9 @@ CONFIG_QCA_SINGLE_BINARY_SUPPORT := 0
 
 #Enable collecting target RAM dump after kernel panic
 CONFIG_TARGET_RAMDUMP_AFTER_KERNEL_PANIC := 1
+
+#Flag to enable/disable secure firmware feature
+CONFIG_FEATURE_SECURE_FIRMWARE := 0
 
 #Flag to enable Stats Ext implementation
 CONFIG_FEATURE_STATS_EXT := 1
@@ -923,8 +926,7 @@ CDEFINES :=	-DANI_LITTLE_BYTE_ENDIAN \
 		-DFEATURE_WLAN_EXTSCAN \
 		-DQCA_LL_TX_FLOW_CT \
 		-DFEATURE_WLAN_LFR \
-		-DFEATURE_WLAN_CH144 \
-		-DHTC_CRP_DEBUG
+		-DFEATURE_WLAN_CH144
 
 ifeq ($(CONFIG_QCA_WIFI_SDIO), 1)
 CDEFINES +=     -DCONFIG_HL_SUPPORT \
@@ -966,11 +968,8 @@ CDEFINES +=	-DWLAN_DEBUG \
 		-DSME_TRACE_RECORD \
 		-DHDD_TRACE_RECORD \
 		-DPE_DEBUG_LOGW \
-		-DPE_DEBUG_LOGE
-endif
-
-ifeq ($(CONFIG_QCACLD_SPAMMY_DEBUG),y)
-CDEFINES += -DDEBUG
+		-DPE_DEBUG_LOGE \
+		-DDEBUG
 endif
 
 ifeq ($(CONFIG_SLUB_DEBUG_ON),y)
@@ -1040,10 +1039,6 @@ CDEFINES += -DCONFIG_ATH_PROCFS_DIAG_SUPPORT
 CDEFINES += -DQCA_SUPPORT_OL_RX_REORDER_TIMEOUT
 CDEFINES += -DCONFIG_ATH_PCIE_MAX_PERF=0 -DCONFIG_ATH_PCIE_AWAKE_WHILE_DRIVER_LOAD=0 -DCONFIG_DISABLE_CDC_MAX_PERF_WAR=0
 CDEFINES += -DQCA_TX_HTT2_SUPPORT
-endif
-
-ifneq ($(TARGET_BUILD_VARIANT),user)
-CDEFINES += -DDEBUG_RX_RING_BUFFER
 endif
 
 # enable the MAC Address auto-generation feature
@@ -1197,11 +1192,6 @@ endif
 ifneq ($(CONFIG_ARCH_MDM9630), y)
 ifeq ($(CONFIG_IPA_UC_OFFLOAD), 1)
 CDEFINES += -DIPA_UC_OFFLOAD
-ifeq ($(CONFIG_ARCH_MDM9640), y)
-CDEFINES += -DIPA_UC_STA_OFFLOAD
-else
-CDEFINES += -DQCA_CONFIG_SMP
-endif
 endif
 endif
 
@@ -1280,7 +1270,7 @@ CDEFINES += -DTARGET_RAMDUMP_AFTER_KERNEL_PANIC
 endif
 
 #Enable/disable secure firmware feature
-ifeq ($(CONFIG_CNSS_SECURE_FW), y)
+ifeq ($(CONFIG_FEATURE_SECURE_FIRMWARE), 1)
 CDEFINES += -DFEATURE_SECURE_FIRMWARE
 endif
 
@@ -1337,7 +1327,7 @@ KBUILD_CPPFLAGS += $(CDEFINES)
 # WLAN driver.  Note that we must use EXTRA_CFLAGS here so that it
 # will override the kernel settings.
 ifeq ($(call cc-option-yn, -Wmaybe-uninitialized),y)
-EXTRA_CFLAGS += -Wmaybe-uninitialized
+EXTRA_CFLAGS += -Os -Wmaybe-uninitialized
 endif
 
 # Module information used by KBuild framework

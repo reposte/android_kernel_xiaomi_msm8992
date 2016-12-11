@@ -495,30 +495,25 @@ static int tlshim_mgmt_rx_process(void *context, u_int8_t *data,
 	}
 #endif
 
-	adf_os_spin_lock_bh(&tl_shim->mgmt_lock);
 	param_tlvs = (WMI_MGMT_RX_EVENTID_param_tlvs *) data;
 	if (!param_tlvs) {
-		adf_os_spin_unlock_bh(&tl_shim->mgmt_lock);
 		TLSHIM_LOGE("Get NULL point message from FW");
 		return 0;
 	}
 
 	hdr = param_tlvs->hdr;
 	if (!hdr) {
-		adf_os_spin_unlock_bh(&tl_shim->mgmt_lock);
 		TLSHIM_LOGE("Rx event is NULL");
 		return 0;
 	}
 
 	if (hdr->buf_len < sizeof(struct ieee80211_frame)) {
-		adf_os_spin_unlock_bh(&tl_shim->mgmt_lock);
 		TLSHIM_LOGE("Invalid rx mgmt packet");
 		return 0;
 	}
 
 	rx_pkt = vos_mem_malloc(sizeof(*rx_pkt));
 	if (!rx_pkt) {
-		adf_os_spin_unlock_bh(&tl_shim->mgmt_lock);
 		TLSHIM_LOGE("Failed to allocate rx packet");
 		return 0;
 	}
@@ -567,7 +562,6 @@ static int tlshim_mgmt_rx_process(void *context, u_int8_t *data,
 			      roundup(hdr->buf_len, 4),
 			      0, 4, FALSE);
 	if (!wbuf) {
-		adf_os_spin_unlock_bh(&tl_shim->mgmt_lock);
 		TLSHIM_LOGE("%s: Failed to allocate wbuf for mgmt rx len(%u)",
 			__func__, hdr->buf_len);
 		vos_mem_free(rx_pkt);
@@ -615,7 +609,6 @@ static int tlshim_mgmt_rx_process(void *context, u_int8_t *data,
 			rx_pkt->pkt_meta.rssi_raw);
 
 	if (!tl_shim->mgmt_rx) {
-		adf_os_spin_unlock_bh(&tl_shim->mgmt_lock);
 		TLSHIM_LOGE("Not registered for Mgmt rx, dropping the frame");
 		vos_pkt_return_packet(rx_pkt);
 		return 0;
@@ -671,7 +664,6 @@ static int tlshim_mgmt_rx_process(void *context, u_int8_t *data,
 		}
 	    }
 	}
-	adf_os_spin_unlock_bh(&tl_shim->mgmt_lock);
 
 #ifdef WLAN_FEATURE_11W
 	if (mgt_type == IEEE80211_FC0_TYPE_MGT &&
@@ -777,21 +769,13 @@ static int tlshim_mgmt_rx_wmi_handler(void *context, u_int8_t *data,
 	VOS_STATUS ret = VOS_STATUS_SUCCESS;
 
 	if (vos_is_logp_in_progress(VOS_MODULE_ID_TL, NULL)) {
-			TLSHIM_LOGE("%s: LOGP in progress\n", __func__);
+			TLSHIM_LOGE("%s: LOPG in progress\n", __func__);
 			return (-1);
 	}
 
-	if (vos_is_load_unload_in_progress(VOS_MODULE_ID_TL, NULL)) {
-			TLSHIM_LOGE("%s: load/unload in progress\n", __func__);
-			return (-1);
-	}
-
-	if (!tl_shim) {
-		TLSHIM_LOGE("%s: tl shim ctx is NULL\n", __func__);
-		return (-1);
-	}
-
+	adf_os_spin_lock_bh(&tl_shim->mgmt_lock);
 	ret = tlshim_mgmt_rx_process(context, data, data_len, FALSE, 0);
+	adf_os_spin_unlock_bh(&tl_shim->mgmt_lock);
 
 	return ret;
 }
@@ -811,9 +795,11 @@ int tlshim_mgmt_roam_event_ind(void *context, u_int32_t vdev_id)
 		return ret;
 	}
 
-	if (tl_shim->last_beacon_data && tl_shim->last_beacon_len) {
-		ret = tlshim_mgmt_rx_process(context, tl_shim->last_beacon_data,
-					tl_shim->last_beacon_len, TRUE, vdev_id);
+	if (tl_shim->last_beacon_data && tl_shim->last_beacon_len)
+	{
+		adf_os_spin_lock_bh(&tl_shim->mgmt_lock);
+		ret = tlshim_mgmt_rx_process(context, tl_shim->last_beacon_data, tl_shim->last_beacon_len, TRUE, vdev_id);
+		adf_os_spin_unlock_bh(&tl_shim->mgmt_lock);
 	}
 	return ret;
 }
@@ -2484,6 +2470,83 @@ void WLANTL_SetUcActive(void *vos_ctx,
 }
 
 /*=============================================================================
+  FUNCTION    WLANTL_IpaUcFwOpEventHandler
+
+  DESCRIPTION
+    This function will be called by TL client.
+    Firmware data path activation response handler.
+    Firmware response will be routed to upper layer
+
+  PARAMETERS
+    IN
+    context : pre-registered shim context
+    rxpkt : message pointer from firmware
+    staid : STA ID, not used
+
+  RETURN VALUE
+    NONE
+
+  SIDE EFFECTS
+
+==============================================================================*/
+void WLANTL_IpaUcFwOpEventHandler(void *context,
+	void *rxpkt,
+	u_int16_t staid)
+{
+	struct txrx_tl_shim_ctx *tl_shim = (struct txrx_tl_shim_ctx *)context;
+
+	if (!tl_shim) {
+		TLSHIM_LOGE("%s: Invalid context", __func__);
+		return;
+	}
+
+	if (tl_shim->fw_op_cb) {
+		tl_shim->fw_op_cb(rxpkt, tl_shim->usr_ctxt);
+	}
+}
+
+/*=============================================================================
+  FUNCTION    WLANTL_IpaUcOpEventHandler
+
+  DESCRIPTION
+    This function will be called by TL client.
+    This API will be registered into OL layer and if firmware send any
+    Activity related notification, OL layer will call this function.
+    firmware indication will be serialized within TLSHIM RX Thread
+
+  PARAMETERS
+    IN
+    op_code : OP Code from firmware
+    shim_ctxt : shim context pointer
+
+  RETURN VALUE
+    NONE
+
+  SIDE EFFECTS
+
+==============================================================================*/
+void WLANTL_IpaUcOpEventHandler(v_U8_t *op_msg, void *shim_ctxt)
+{
+	pVosSchedContext sched_ctx = get_vos_sched_ctxt();
+	struct VosTlshimPkt *pkt;
+
+	if (unlikely(!sched_ctx))
+		return;
+
+	pkt = vos_alloc_tlshim_pkt(sched_ctx);
+	if (!pkt) {
+		TLSHIM_LOGW("No available Rx message buffer");
+		return;
+	}
+
+	pkt->callback = (vos_tlshim_cb)	WLANTL_IpaUcFwOpEventHandler;
+	pkt->context = shim_ctxt;
+	pkt->Rxpkt = (void *)op_msg;
+	pkt->staId = 0;
+	vos_indicate_rxpkt(sched_ctx, pkt);
+}
+
+/*=============================================================================
   FUNCTION    WLANTL_RegisterOPCbFnc
 
   DESCRIPTION
@@ -2503,8 +2566,23 @@ void WLANTL_SetUcActive(void *vos_ctx,
 void WLANTL_RegisterOPCbFnc(void *vos_ctx,
 	void (*func)(v_U8_t *op_msg, void *usr_ctxt), void *usr_ctxt)
 {
+	struct txrx_tl_shim_ctx *tl_shim;
+
+	if (!vos_ctx) {
+		TLSHIM_LOGE("%s: Invalid context", __func__);
+		return;
+	}
+
+	tl_shim = vos_get_context(VOS_MODULE_ID_TL, vos_ctx);
+	if (NULL == tl_shim) {
+		TLSHIM_LOGW("Invalid TL Shim context");
+		return;
+	}
+
+	tl_shim->fw_op_cb = func;
+	tl_shim->usr_ctxt = usr_ctxt;
 	wdi_in_ipa_uc_register_op_cb(((pVosContextType)vos_ctx)->pdev_txrx_ctx,
-		func, usr_ctxt);
+		WLANTL_IpaUcOpEventHandler, (void *)tl_shim);
 }
 #endif /* IPA_UC_OFFLOAD */
 
