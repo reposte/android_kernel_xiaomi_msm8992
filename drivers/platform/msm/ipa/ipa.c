@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -465,7 +465,8 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (unlikely(((struct ipa_ioc_add_rt_rule *)param)->num_rules
 			!= pre_entry)) {
 			IPAERR("current %d pre %d\n",
-				((struct ipa_ioc_add_rt_rule *)param)->num_rules,
+				((struct ipa_ioc_add_rt_rule *)param)->
+				num_rules,
 				pre_entry);
 			retval = -EFAULT;
 			break;
@@ -504,7 +505,8 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (unlikely(((struct ipa_ioc_mdfy_rt_rule *)param)->num_rules
 			!= pre_entry)) {
 			IPAERR("current %d pre %d\n",
-				((struct ipa_ioc_mdfy_rt_rule *)param)->num_rules,
+				((struct ipa_ioc_mdfy_rt_rule *)param)->
+				num_rules,
 				pre_entry);
 			retval = -EFAULT;
 			break;
@@ -582,7 +584,8 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (unlikely(((struct ipa_ioc_add_flt_rule *)param)->num_rules
 			!= pre_entry)) {
 			IPAERR("current %d pre %d\n",
-				((struct ipa_ioc_add_flt_rule *)param)->num_rules,
+				((struct ipa_ioc_add_flt_rule *)param)->
+				num_rules,
 				pre_entry);
 			retval = -EFAULT;
 			break;
@@ -621,7 +624,8 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (unlikely(((struct ipa_ioc_del_flt_rule *)param)->num_hdls
 			!= pre_entry)) {
 			IPAERR("current %d pre %d\n",
-				((struct ipa_ioc_del_flt_rule *)param)->num_hdls,
+				((struct ipa_ioc_del_flt_rule *)param)->
+				num_hdls,
 				pre_entry);
 			retval = -EFAULT;
 			break;
@@ -660,7 +664,8 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (unlikely(((struct ipa_ioc_mdfy_flt_rule *)param)->num_rules
 			!= pre_entry)) {
 			IPAERR("current %d pre %d\n",
-				((struct ipa_ioc_mdfy_flt_rule *)param)->num_rules,
+				((struct ipa_ioc_mdfy_flt_rule *)param)->
+				num_rules,
 				pre_entry);
 			retval = -EFAULT;
 			break;
@@ -1101,7 +1106,8 @@ static long ipa_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (unlikely(((struct ipa_ioc_del_hdr_proc_ctx *)
 			param)->num_hdls != pre_entry)) {
 			IPAERR("current %d pre %d\n",
-				((struct ipa_ioc_del_hdr_proc_ctx *)param)->num_hdls,
+				((struct ipa_ioc_del_hdr_proc_ctx *)param)->
+				num_hdls,
 				pre_entry);
 			retval = -EFAULT;
 			break;
@@ -1313,8 +1319,14 @@ int ipa_init_q6_smem(void)
 
 	ipa_inc_client_enable_clks();
 
-	rc = ipa_init_smem_region(IPA_MEM_PART(modem_size),
-		IPA_MEM_PART(modem_ofst));
+	if (ipa_ctx->ipa_hw_type == IPA_HW_v2_0)
+		rc = ipa_init_smem_region(IPA_MEM_PART(modem_size) -
+			IPA_MEM_RAM_MODEM_NETWORK_STATS_SIZE,
+			IPA_MEM_PART(modem_ofst));
+	else
+		rc = ipa_init_smem_region(IPA_MEM_PART(modem_size),
+			IPA_MEM_PART(modem_ofst));
+
 	if (rc) {
 		IPAERR("failed to initialize Modem RAM memory\n");
 		ipa_dec_client_disable_clks();
@@ -1665,9 +1677,6 @@ static int ipa_q6_set_ex_path_dis_agg(void)
 */
 int ipa_q6_cleanup(void)
 {
-	int client_idx;
-	int res;
-
 	ipa_inc_client_enable_clks();
 
 	if (ipa_q6_pipe_delay()) {
@@ -1686,15 +1695,31 @@ int ipa_q6_cleanup(void)
 		IPAERR("Failed to disable aggregation on Q6 pipes\n");
 		BUG();
 	}
+	return 0;
+}
 
+/**
+* ipa_q6_pipe_reset() - A cleanup for the Q6 pipes
+*                    in IPA HW. This is performed in case of SSR.
+*
+* Return codes:
+* 0: success
+* This is a mandatory procedure, in case one of the steps fails, the
+* AP needs to restart.
+*/
+int ipa_q6_pipe_reset(void)
+{
+	int client_idx;
+	int res;
 	/*
 	 * Q6 relies on the AP to reset all Q6 IPA pipes.
 	 * In case the uC is not loaded, or upon any failure in the pipe reset
 	 * sequence, we have to assert.
 	 */
 	if (!ipa_ctx->uc_ctx.uc_loaded) {
-		IPAERR("uC is not loaded, can't reset Q6 pipes\n");
-		BUG();
+		IPAERR("uC is not loaded, won't reset Q6 pipes\n");
+		ipa_dec_client_disable_clks();
+		return 0;
 	}
 
 	for (client_idx = 0; client_idx < IPA_CLIENT_MAX; client_idx++)
@@ -1705,9 +1730,12 @@ int ipa_q6_cleanup(void)
 				BUG();
 		}
 
-	ipa_ctx->q6_proxy_clk_vote_valid = true;
+	/* set proxy vote before decrement */
+	ipa_proxy_clk_vote();
+	ipa_dec_client_disable_clks();
 	return 0;
 }
+
 
 int _ipa_init_sram_v2(void)
 {
@@ -1739,7 +1767,6 @@ int _ipa_init_sram_v2(void)
 	IPA_SRAM_SET(IPA_MEM_PART(v6_rt_ofst), IPA_MEM_CANARY_VAL);
 	IPA_SRAM_SET(IPA_MEM_PART(modem_hdr_ofst), IPA_MEM_CANARY_VAL);
 	IPA_SRAM_SET(IPA_MEM_PART(modem_ofst), IPA_MEM_CANARY_VAL);
-	IPA_SRAM_SET(IPA_MEM_PART(apps_v4_flt_ofst), IPA_MEM_CANARY_VAL);
 	IPA_SRAM_SET(IPA_MEM_PART(uc_info_ofst), IPA_MEM_CANARY_VAL);
 
 	iounmap(ipa_sram_mmio);
@@ -2971,8 +2998,7 @@ static void ipa_sps_process_irq(struct work_struct *work)
 
 	/* process bam irq */
 	ret = sps_bam_process_irq(ipa_ctx->bam_handle);
-	if (ret)
-	{
+	if (ret) {
 		IPAERR("sps_process_eot_event failed %d\n", ret);
 		ipa_sps_irq_rx_notify_all();
 	}
@@ -3160,6 +3186,7 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p,
 	ipa_ctx->use_ipa_teth_bridge = resource_p->use_ipa_teth_bridge;
 	ipa_ctx->ipa_bam_remote_mode = resource_p->ipa_bam_remote_mode;
 	ipa_ctx->wan_rx_ring_size = resource_p->wan_rx_ring_size;
+	ipa_ctx->modem_cfg_emb_pipe_flt = resource_p->modem_cfg_emb_pipe_flt;
 
 	/* default aggregation parameters */
 	ipa_ctx->aggregation_type = IPA_MBIM_16;
@@ -3508,15 +3535,6 @@ static int ipa_init(const struct ipa_plat_drv_res *resource_p,
 		goto fail_nat_dev_add;
 	}
 
-	/* Create workqueue for power management */
-	ipa_ctx->power_mgmt_wq =
-		create_singlethread_workqueue("ipa_power_mgmt");
-	if (!ipa_ctx->power_mgmt_wq) {
-		IPAERR("failed to create wq\n");
-		result = -ENOMEM;
-		goto fail_init_hw;
-	}
-
 	/* Create a wakeup source. */
 	wakeup_source_init(&ipa_ctx->w_lock, "IPA_WS");
 	spin_lock_init(&ipa_ctx->wakelock_ref_cnt.spinlock);
@@ -3662,6 +3680,7 @@ static int get_ipa_dts_configuration(struct platform_device *pdev,
 	ipa_drv_res->ipa_hw_mode = 0;
 	ipa_drv_res->ipa_bam_remote_mode = false;
 	ipa_drv_res->wan_rx_ring_size = IPA_GENERIC_RX_POOL_SZ;
+	ipa_drv_res->modem_cfg_emb_pipe_flt = false;
 
 	/* Get IPA HW Version */
 	result = of_property_read_u32(pdev->dev.of_node, "qcom,ipa-hw-ver",
@@ -3703,6 +3722,13 @@ static int get_ipa_dts_configuration(struct platform_device *pdev,
 			"qcom,ipa-bam-remote-mode");
 	IPADBG(": ipa bam remote mode = %s\n",
 			ipa_drv_res->ipa_bam_remote_mode
+			? "True" : "False");
+
+	ipa_drv_res->modem_cfg_emb_pipe_flt =
+			of_property_read_bool(pdev->dev.of_node,
+			"qcom,modem-cfg-emb-pipe-flt");
+	IPADBG(": modem configure embedded pipe filtering = %s\n",
+			ipa_drv_res->modem_cfg_emb_pipe_flt
 			? "True" : "False");
 
 	/* Get IPA wrapper address */

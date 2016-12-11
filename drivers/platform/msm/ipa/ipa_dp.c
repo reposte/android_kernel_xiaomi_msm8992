@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -26,16 +26,24 @@
 #define POLLING_MIN_SLEEP_TX 400
 #define POLLING_MAX_SLEEP_TX 500
 /* 8K less 1 nominal MTU (1500 bytes) rounded to units of KB */
+#define IPA_MTU 1500
 #define IPA_GENERIC_AGGR_BYTE_LIMIT 6
 #define IPA_GENERIC_AGGR_TIME_LIMIT 1
 #define IPA_GENERIC_AGGR_PKT_LIMIT 0
 
 #define IPA_GENERIC_RX_BUFF_BASE_SZ 8192
-#define IPA_REAL_GENERIC_RX_BUFF_SZ (SKB_DATA_ALIGN(\
-		IPA_GENERIC_RX_BUFF_BASE_SZ + NET_SKB_PAD) +\
+#define IPA_REAL_GENERIC_RX_BUFF_SZ(X) (SKB_DATA_ALIGN(\
+		(X) + NET_SKB_PAD) +\
 		SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
-#define IPA_GENERIC_RX_BUFF_SZ (IPA_GENERIC_RX_BUFF_BASE_SZ -\
-		(IPA_REAL_GENERIC_RX_BUFF_SZ - IPA_GENERIC_RX_BUFF_BASE_SZ))
+#define IPA_GENERIC_RX_BUFF_SZ(X) ((X) -\
+		(IPA_REAL_GENERIC_RX_BUFF_SZ(X) - (X)))
+#define IPA_GENERIC_RX_BUFF_LIMIT (\
+		IPA_REAL_GENERIC_RX_BUFF_SZ(\
+		IPA_GENERIC_RX_BUFF_BASE_SZ) -\
+		IPA_GENERIC_RX_BUFF_BASE_SZ)
+
+/* less 1 nominal MTU (1500 bytes) rounded to units of KB */
+#define IPA_ADJUST_AGGR_BYTE_LIMIT(X) (((X) - IPA_MTU)/1000)
 
 #define IPA_WLAN_RX_POOL_SZ 100
 #define IPA_WLAN_RX_POOL_SZ_LOW_WM 5
@@ -46,6 +54,8 @@
 #define IPA_ODU_RX_BUFF_SZ 2048
 #define IPA_ODU_RX_POOL_SZ 32
 #define IPA_SIZE_DL_CSUM_META_TRAILER 8
+
+#define IPA_HEADROOM 128
 
 static struct sk_buff *ipa_get_skb_ipa_rx(unsigned int len, gfp_t flags);
 static void ipa_replenish_wlan_rx_cache(struct ipa_sys_context *sys);
@@ -65,6 +75,8 @@ static void ipa_cleanup_wlan_rx_common_cache(void);
 static void ipa_wq_repl_rx(struct work_struct *work);
 static void ipa_dma_memcpy_notify(struct ipa_sys_context *sys,
 		struct sps_iovec *iovec);
+
+static u32 ipa_adjust_ra_buff_base_sz(u32 aggr_byte_limit);
 
 static void ipa_wq_write_done_common(struct ipa_sys_context *sys, u32 cnt)
 {
@@ -737,16 +749,23 @@ static void ipa_rx_switch_to_intr_mode(struct ipa_sys_context *sys)
 {
 	int ret;
 
-	if (!atomic_read(&sys->curr_polling_state)) {
-		IPAERR("already in intr mode\n");
-		goto fail;
-	}
-
 	ret = sps_get_config(sys->ep->ep_hdl, &sys->ep->connect);
 	if (ret) {
 		IPAERR("sps_get_config() failed %d\n", ret);
 		goto fail;
 	}
+
+	if (!atomic_read(&sys->curr_polling_state) &&
+		((sys->ep->connect.options & SPS_O_EOT) == SPS_O_EOT)) {
+		IPADBG("already in intr mode\n");
+		return;
+	}
+
+	if (!atomic_read(&sys->curr_polling_state)) {
+		IPAERR("Not in poll mode, and IRQ not enabled.\n");
+		goto fail;
+	}
+
 	sys->event.options = SPS_O_EOT;
 	ret = sps_register_event(sys->ep->ep_hdl, &sys->event);
 	if (ret) {
@@ -833,11 +852,12 @@ void ipa_sps_irq_rx_notify_all(void)
 	struct ipa_ep_context *ep;
 	int ipa_ep_idx, client_num;
 
-	IPAERR("\n");
+	IPADBG("\n");
 
-	for(client_num = IPA_CLIENT_CONS; client_num < IPA_CLIENT_MAX; client_num++)
-	{
-		if ((client_num != IPA_CLIENT_APPS_LAN_CONS) && (client_num != IPA_CLIENT_APPS_WAN_CONS))
+	for (client_num = IPA_CLIENT_CONS;
+		client_num < IPA_CLIENT_MAX; client_num++) {
+		if ((client_num != IPA_CLIENT_APPS_LAN_CONS) &&
+			(client_num != IPA_CLIENT_APPS_WAN_CONS))
 			continue;
 
 		memset(&notify, 0, sizeof(notify));
@@ -853,7 +873,7 @@ void ipa_sps_irq_rx_notify_all(void)
 		}
 		notify.user = ep->sys;
 		notify.event_id = SPS_EVENT_EOT;
-		if(ep->sys->sps_callback)
+		if (ep->sys->sps_callback)
 			ep->sys->sps_callback(&notify);
 	}
 }
@@ -1147,8 +1167,13 @@ int ipa_setup_sys_pipe(struct ipa_sys_connect_params *sys_in, u32 *clnt_hdl)
 	}
 
 	ipa_ctx->skip_ep_cfg_shadow[ipa_ep_idx] = ep->skip_ep_cfg;
-	if (!ep->skip_ep_cfg && IPA_CLIENT_IS_PROD(sys_in->client))
-		ipa_install_dflt_flt_rules(ipa_ep_idx);
+	if (!ep->skip_ep_cfg && IPA_CLIENT_IS_PROD(sys_in->client)) {
+		if (ipa_ctx->modem_cfg_emb_pipe_flt &&
+			sys_in->client == IPA_CLIENT_APPS_LAN_WAN_PROD)
+			IPADBG("modem cfg emb pipe flt\n");
+		else
+			ipa_install_dflt_flt_rules(ipa_ep_idx);
+	}
 
 	if (!ep->keep_ipa_awake)
 		ipa_dec_client_disable_clks();
@@ -1227,7 +1252,11 @@ int ipa_teardown_sys_pipe(u32 clnt_hdl)
 	if (IPA_CLIENT_IS_CONS(ep->client))
 		ipa_cleanup_rx(ep->sys);
 
-	ipa_delete_dflt_flt_rules(clnt_hdl);
+	if (ipa_ctx->modem_cfg_emb_pipe_flt &&
+		ep->client == IPA_CLIENT_APPS_LAN_WAN_PROD)
+		IPADBG("modem cfg emb pipe flt\n");
+	else
+		ipa_delete_dflt_flt_rules(clnt_hdl);
 
 	if (IPA_CLIENT_IS_WLAN_CONS(ep->client))
 		atomic_dec(&ipa_ctx->wc_memb.active_clnt_cnt);
@@ -1909,12 +1938,15 @@ begin:
 		IPADBG("STATUS opcode=%d src=%d dst=%d len=%d\n",
 				status->status_opcode, status->endp_src_idx,
 				status->endp_dest_idx, status->pkt_len);
+
 		if (status->status_opcode !=
 			IPA_HW_STATUS_OPCODE_DROPPED_PACKET &&
 			status->status_opcode !=
 			IPA_HW_STATUS_OPCODE_PACKET &&
 			status->status_opcode !=
-			IPA_HW_STATUS_OPCODE_SUSPENDED_PACKET) {
+			IPA_HW_STATUS_OPCODE_SUSPENDED_PACKET &&
+			status->status_opcode !=
+			IPA_HW_STATUS_OPCODE_XLAT_PACKET) {
 			IPAERR("unsupported opcode(%d)\n",
 				status->status_opcode);
 			skb_pull(skb, IPA_PKT_STATUS_SIZE);
@@ -2128,12 +2160,19 @@ static int ipa_wan_rx_pyld_hdlr(struct sk_buff *skb,
 		IPAERR("ZLT\n");
 		goto bail;
 	}
+
+	if (ipa_ctx->ipa_client_apps_wan_cons_agg_gro) {
+		sys->ep->client_notify(sys->ep->priv,
+					IPA_RECEIVE, (unsigned long)(skb));
+		return rc;
+	}
 	/*
 	 * payload splits across 2 buff or more,
 	 * take the start of the payload from prev_skb
 	 */
 	if (sys->len_rem)
 		wan_rx_handle_splt_pyld(skb, sys);
+
 
 	while (skb->len) {
 		IPADBG("LEN_REM %d\n", skb->len);
@@ -2149,7 +2188,9 @@ static int ipa_wan_rx_pyld_hdlr(struct sk_buff *skb,
 		if (status->status_opcode !=
 			IPA_HW_STATUS_OPCODE_DROPPED_PACKET &&
 			status->status_opcode !=
-			IPA_HW_STATUS_OPCODE_PACKET) {
+			IPA_HW_STATUS_OPCODE_PACKET &&
+			status->status_opcode !=
+			IPA_HW_STATUS_OPCODE_XLAT_PACKET) {
 			IPAERR("unsupported opcode\n");
 			skb_pull(skb, IPA_PKT_STATUS_SIZE);
 			continue;
@@ -2305,6 +2346,18 @@ static int ipa_rx_pyld_hdlr(struct sk_buff *rx_skb, struct ipa_sys_context *sys)
 static struct sk_buff *ipa_get_skb_ipa_rx(unsigned int len, gfp_t flags)
 {
 	return __dev_alloc_skb(len, flags);
+}
+
+static struct sk_buff *ipa_get_skb_ipa_rx_headroom(unsigned int len,
+		gfp_t flags)
+{
+	struct sk_buff *skb;
+
+	skb = __dev_alloc_skb(len + IPA_HEADROOM, flags);
+	if (skb)
+		skb_reserve(skb, IPA_HEADROOM);
+
+	return skb;
 }
 
 static void ipa_free_skb_rx(struct sk_buff *skb)
@@ -2555,26 +2608,69 @@ static int ipa_assign_policy(struct ipa_sys_connect_params *in,
 						replenish_rx_work_func);
 				INIT_WORK(&sys->repl_work, ipa_wq_repl_rx);
 				atomic_set(&sys->curr_polling_state, 0);
-				sys->rx_buff_sz = IPA_GENERIC_RX_BUFF_SZ;
-				sys->get_skb = ipa_get_skb_ipa_rx;
+				sys->rx_buff_sz = IPA_GENERIC_RX_BUFF_SZ(
+					IPA_GENERIC_RX_BUFF_BASE_SZ) - IPA_HEADROOM;
+				sys->get_skb = ipa_get_skb_ipa_rx_headroom;
 				sys->free_skb = ipa_free_skb_rx;
 				in->ipa_ep_cfg.aggr.aggr_en = IPA_ENABLE_AGGR;
 				in->ipa_ep_cfg.aggr.aggr = IPA_GENERIC;
-				in->ipa_ep_cfg.aggr.aggr_byte_limit =
-					IPA_GENERIC_AGGR_BYTE_LIMIT;
 				in->ipa_ep_cfg.aggr.aggr_time_limit =
 					IPA_GENERIC_AGGR_TIME_LIMIT;
-				in->ipa_ep_cfg.aggr.aggr_pkt_limit =
-					IPA_GENERIC_AGGR_PKT_LIMIT;
 				if (in->client == IPA_CLIENT_APPS_LAN_CONS) {
 					sys->pyld_hdlr = ipa_lan_rx_pyld_hdlr;
 					sys->rx_pool_sz =
 						IPA_GENERIC_RX_POOL_SZ;
+					in->ipa_ep_cfg.aggr.aggr_byte_limit =
+					IPA_GENERIC_AGGR_BYTE_LIMIT;
+					in->ipa_ep_cfg.aggr.aggr_pkt_limit =
+					IPA_GENERIC_AGGR_PKT_LIMIT;
 				} else if (in->client ==
 						IPA_CLIENT_APPS_WAN_CONS) {
 					sys->pyld_hdlr = ipa_wan_rx_pyld_hdlr;
 					sys->rx_pool_sz =
 						ipa_ctx->wan_rx_ring_size;
+					if (ipa_ctx->
+					ipa_client_apps_wan_cons_agg_gro) {
+						IPAERR("get close-by %u\n",
+						ipa_adjust_ra_buff_base_sz(
+						in->ipa_ep_cfg.aggr.
+						aggr_byte_limit));
+						IPAERR("set rx_buff_sz %lu\n",
+						(unsigned long int)
+						IPA_GENERIC_RX_BUFF_SZ(
+						ipa_adjust_ra_buff_base_sz(
+						in->ipa_ep_cfg.
+							aggr.aggr_byte_limit)));
+						/* disable ipa_status */
+						sys->ep->status.
+							status_en = false;
+						sys->rx_buff_sz =
+						IPA_GENERIC_RX_BUFF_SZ(
+						ipa_adjust_ra_buff_base_sz(
+						in->ipa_ep_cfg.aggr.
+							aggr_byte_limit));
+						in->ipa_ep_cfg.aggr.
+							aggr_byte_limit =
+						sys->rx_buff_sz < in->
+						ipa_ep_cfg.aggr.
+						aggr_byte_limit ?
+						IPA_ADJUST_AGGR_BYTE_LIMIT(
+						sys->rx_buff_sz) :
+						IPA_ADJUST_AGGR_BYTE_LIMIT(
+						in->ipa_ep_cfg.
+						aggr.aggr_byte_limit);
+						IPAERR("set aggr_limit %lu\n",
+						(unsigned long int)
+						in->ipa_ep_cfg.aggr.
+						aggr_byte_limit);
+					} else {
+						in->ipa_ep_cfg.aggr.
+							aggr_byte_limit =
+						IPA_GENERIC_AGGR_BYTE_LIMIT;
+						in->ipa_ep_cfg.aggr.
+							aggr_pkt_limit =
+						IPA_GENERIC_AGGR_PKT_LIMIT;
+					}
 				}
 				if (nr_cpu_ids > 1)
 					sys->repl_hdlr =
@@ -2989,3 +3085,23 @@ int ipa_sys_teardown(u32 clnt_hdl)
 	return 0;
 }
 EXPORT_SYMBOL(ipa_sys_teardown);
+
+/**
+ * ipa_adjust_ra_buff_base_sz()
+ *
+ * Return value: the largest power of two which is smaller
+ * than the input value
+ */
+static u32 ipa_adjust_ra_buff_base_sz(u32 aggr_byte_limit)
+{
+	aggr_byte_limit += IPA_MTU;
+	aggr_byte_limit += IPA_GENERIC_RX_BUFF_LIMIT;
+	aggr_byte_limit--;
+	aggr_byte_limit |= aggr_byte_limit >> 1;
+	aggr_byte_limit |= aggr_byte_limit >> 2;
+	aggr_byte_limit |= aggr_byte_limit >> 4;
+	aggr_byte_limit |= aggr_byte_limit >> 8;
+	aggr_byte_limit |= aggr_byte_limit >> 16;
+	aggr_byte_limit++;
+	return aggr_byte_limit >> 1;
+}
