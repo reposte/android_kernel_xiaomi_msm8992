@@ -1,4 +1,5 @@
 /* Copyright (c) 2009-2015, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -26,10 +27,8 @@ DEFINE_MSM_MUTEX(msm_flash_mutex);
 
 static struct v4l2_file_operations msm_flash_v4l2_subdev_fops;
 static struct led_trigger *torch_trigger;
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 static struct msm_flash_ctrl_t *g_fctrl;
 static unsigned char g_flashlight_brightness;
-#endif
 
 static const struct of_device_id msm_flash_dt_match[] = {
 	{.compatible = "qcom,camera-flash", .data = NULL},
@@ -87,7 +86,7 @@ static struct led_classdev msm_torch_led[MAX_LED_TRIGGERS] = {
 	},
 };
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
+
 static int32_t msm_flash_i2c_write_table(
 	struct msm_flash_ctrl_t *flash_ctrl,
 	struct msm_camera_i2c_reg_setting_array *settings);
@@ -301,7 +300,6 @@ int32_t msm_flashlight_create_classdev(struct platform_device *pdev,
 	}
 	return 0;
 }
-#endif
 
 static int32_t msm_torch_create_classdev(struct platform_device *pdev,
 				void *data)
@@ -464,14 +462,6 @@ static int32_t msm_flash_i2c_init(
 			flash_ctrl->power_setting_array.size_down);
 	} else
 #endif
-#ifndef CONFIG_MACH_XIAOMI_MSM8992
-	if (copy_from_user(&flash_ctrl->power_setting_array,
-		(void *)flash_init_info->power_setting_array,
-		sizeof(struct msm_sensor_power_setting_array))) {
-		pr_err("%s copy_from_user failed %d\n", __func__, __LINE__);
-		return -EFAULT;
-	}
-#endif
 
 	if (flash_ctrl->flash_device_type == MSM_CAMERA_PLATFORM_DEVICE) {
 		cci_client = flash_ctrl->flash_i2c_client.cci_client;
@@ -567,13 +557,12 @@ static int32_t msm_flash_i2c_release(
 {
 	int32_t rc = 0;
 
+	CDBG("Enter\n");
 	if (!(&flash_ctrl->power_info) || !(&flash_ctrl->flash_i2c_client)) {
 		pr_err("%s:%d failed: %p %p\n",
 			__func__, __LINE__, &flash_ctrl->power_info,
 			&flash_ctrl->flash_i2c_client);
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 		flash_ctrl->flash_state = MSM_CAMERA_FLASH_RELEASE;
-#endif
 		return -EINVAL;
 	}
 
@@ -586,9 +575,9 @@ static int32_t msm_flash_i2c_release(
 		return -EINVAL;
 	}
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 	flash_ctrl->flash_state = MSM_CAMERA_FLASH_RELEASE;
-#endif
+	CDBG("Exit\n");
+
 	return 0;
 }
 
@@ -819,9 +808,7 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 	switch (flash_data->cfg_type) {
 	case CFG_FLASH_INIT:
 		rc = msm_flash_init(flash_ctrl, flash_data);
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 		g_flashlight_brightness = 0;
-#endif
 		break;
 	case CFG_FLASH_RELEASE:
 		if (flash_ctrl->flash_state == MSM_CAMERA_FLASH_INIT)
@@ -832,27 +819,21 @@ static int32_t msm_flash_config(struct msm_flash_ctrl_t *flash_ctrl,
 		if (flash_ctrl->flash_state == MSM_CAMERA_FLASH_INIT) {
 			rc = flash_ctrl->func_tbl->camera_flash_off(
 				flash_ctrl, flash_data);
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 			g_flashlight_brightness = 0;
-#endif
 		}
 		break;
 	case CFG_FLASH_LOW:
 		if (flash_ctrl->flash_state == MSM_CAMERA_FLASH_INIT) {
 			rc = flash_ctrl->func_tbl->camera_flash_low(
 				flash_ctrl, flash_data);
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 			g_flashlight_brightness = 100;
-#endif
 		}
 		break;
 	case CFG_FLASH_HIGH:
 		if (flash_ctrl->flash_state == MSM_CAMERA_FLASH_INIT) {
 			rc = flash_ctrl->func_tbl->camera_flash_high(
 				flash_ctrl, flash_data);
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 			g_flashlight_brightness = 100;
-#endif
 		}
 		break;
 	default:
@@ -1301,7 +1282,6 @@ static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 	if (flash_ctrl->flash_driver_type == FLASH_DRIVER_I2C) {
 		rc = msm_camera_get_dt_vreg_data(pdev->dev.of_node,
 				&flash_ctrl->power_info.cam_vreg,
@@ -1312,16 +1292,13 @@ static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 			return -EINVAL;
 		}
 	}
-#endif
 
 	flash_ctrl->flash_state = MSM_CAMERA_FLASH_RELEASE;
 	flash_ctrl->power_info.dev = &flash_ctrl->pdev->dev;
 	flash_ctrl->flash_device_type = MSM_CAMERA_PLATFORM_DEVICE;
 	flash_ctrl->flash_mutex = &msm_flash_mutex;
 	flash_ctrl->flash_i2c_client.i2c_func_tbl = &msm_sensor_cci_func_tbl;
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 	flash_ctrl->flash_i2c_client.addr_type = MSM_CAMERA_I2C_BYTE_ADDR;
-#endif
 	flash_ctrl->flash_i2c_client.cci_client = kzalloc(
 		sizeof(struct msm_camera_cci_client), GFP_KERNEL);
 	if (!flash_ctrl->flash_i2c_client.cci_client) {
@@ -1334,7 +1311,6 @@ static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 	cci_client->cci_subdev = msm_cci_get_subdev();
 	cci_client->cci_i2c_master = flash_ctrl->cci_i2c_master;
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 	if (flash_ctrl->flash_driver_type == FLASH_DRIVER_I2C) {
 		rc = of_property_read_u32_array(pdev->dev.of_node, "qcom,slave-id",
 			id_info, 3);
@@ -1348,7 +1324,6 @@ static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 		cci_client->id_map = 0;
 		cci_client->i2c_freq_mode = I2C_STANDARD_MODE;
 	}
-#endif
 
 	/* Initialize sub device */
 	v4l2_subdev_init(&flash_ctrl->msm_sd.sd, &msm_flash_subdev_ops);
@@ -1377,9 +1352,8 @@ static int32_t msm_flash_platform_probe(struct platform_device *pdev)
 	if (flash_ctrl->flash_driver_type == FLASH_DRIVER_PMIC)
 		rc = msm_torch_create_classdev(pdev, flash_ctrl);
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 	msm_flashlight_create_classdev(pdev, flash_ctrl);
-#endif
+
 	CDBG("probe success\n");
 	return rc;
 }

@@ -1,4 +1,5 @@
 /* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -29,10 +30,8 @@
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 
 static void *g_fctrl;
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 extern int32_t msm_led_flashlight_create_classdev(
 			struct platform_device *pdev, void *data);
-#endif
 
 int32_t msm_led_i2c_trigger_get_subdev_id(struct msm_led_flash_ctrl_t *fctrl,
 	void *arg)
@@ -204,26 +203,8 @@ int msm_flash_led_init(struct msm_led_flash_ctrl_t *fctrl)
 	msleep(20);
 
 	CDBG("before FL_RESET\n");
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
+
 	gpio_direction_output(power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_EN], GPIO_OUT_HIGH);
-#else
-	if (power_info->gpio_conf->gpio_num_info->
-			valid[SENSOR_GPIO_FL_RESET] == 1)
-		gpio_set_value_cansleep(
-			power_info->gpio_conf->gpio_num_info->
-			gpio_num[SENSOR_GPIO_FL_RESET],
-			GPIO_OUT_HIGH);
-
-	gpio_set_value_cansleep(
-		power_info->gpio_conf->gpio_num_info->
-		gpio_num[SENSOR_GPIO_FL_EN],
-		GPIO_OUT_HIGH);
-
-	gpio_set_value_cansleep(
-		power_info->gpio_conf->gpio_num_info->
-		gpio_num[SENSOR_GPIO_FL_NOW],
-		GPIO_OUT_HIGH);
-#endif
 
 	if (fctrl->flash_i2c_client && fctrl->reg_setting) {
 		rc = fctrl->flash_i2c_client->i2c_func_tbl->i2c_write_table(
@@ -254,24 +235,7 @@ int msm_flash_led_release(struct msm_led_flash_ctrl_t *fctrl)
 		pr_err("%s:%d invalid led state\n", __func__, __LINE__);
 		return -EINVAL;
 	}
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 	gpio_direction_output(power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_EN], GPIO_OUT_LOW);
-#else
-	gpio_set_value_cansleep(
-		power_info->gpio_conf->gpio_num_info->
-		gpio_num[SENSOR_GPIO_FL_EN],
-		GPIO_OUT_LOW);
-	gpio_set_value_cansleep(
-		power_info->gpio_conf->gpio_num_info->
-		gpio_num[SENSOR_GPIO_FL_NOW],
-		GPIO_OUT_LOW);
-	if (power_info->gpio_conf->gpio_num_info->
-			valid[SENSOR_GPIO_FL_RESET] == 1)
-		gpio_set_value_cansleep(
-			power_info->gpio_conf->gpio_num_info->
-			gpio_num[SENSOR_GPIO_FL_RESET],
-			GPIO_OUT_LOW);
-#endif
 
 	if (fctrl->pinctrl_info.use_pinctrl == true) {
 		ret = pinctrl_select_state(fctrl->pinctrl_info.pinctrl,
@@ -316,10 +280,8 @@ int msm_flash_led_off(struct msm_led_flash_ctrl_t *fctrl)
 	power_info = &flashdata->power_info;
 	CDBG("%s:%d called\n", __func__, __LINE__);
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 	if (!gpio_get_value_cansleep(power_info->gpio_conf->gpio_num_info->gpio_num[SENSOR_GPIO_FL_EN]))
 		return 0; /* already released */
-#endif
 
 	if (fctrl->flash_i2c_client && fctrl->reg_setting) {
 		rc = fctrl->flash_i2c_client->i2c_func_tbl->i2c_write_table(
@@ -886,10 +848,8 @@ int msm_flash_probe(struct platform_device *pdev,
 			&msm_sensor_cci_func_tbl;
 
 	rc = msm_led_flash_create_v4lsubdev(pdev, fctrl);
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 	if (!rc)
 		msm_led_flashlight_create_classdev(pdev, fctrl);
-#endif
 
 	CDBG("%s: probe success\n", __func__);
 	return 0;

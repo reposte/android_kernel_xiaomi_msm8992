@@ -1,4 +1,5 @@
 /* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -24,13 +25,12 @@
 DEFINE_MSM_MUTEX(msm_eeprom_mutex);
 
 #define EEPROM_ONSEMI_ADDR 0x7C
-#ifdef CONFIG_MACH_LEO
+#ifndef CONFIG_ARCH_MSM8992
 #define EEPROM_IC_ONSEMI
 #else
 #undef EEPROM_IC_ONSEMI
 #endif
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 #define X7_FRONT_MODULE_ID_OFFSET 0x1
 #define X7_FRONT_PAGE0_OFFSET 0x20
 #define X7_FRONT_PAGE1_OFFSET 0x10
@@ -83,7 +83,6 @@ static int x11_set_back_sensor_name;
 static char x11_back_sensor_name[32];
 static int x11_set_front_sensor_name;
 static char x11_front_sensor_name[32];
-#endif
 
 #ifdef CONFIG_COMPAT
 static struct v4l2_file_operations msm_eeprom_v4l2_subdev_fops;
@@ -115,7 +114,6 @@ static int msm_eeprom_verify_sum(const char *mem, uint32_t size, uint32_t sum)
 	return 0;
 }
 
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 static void set_back_sensor_name(struct msm_eeprom_ctrl_t *e_ctrl,
 		char *mapdata)
 {
@@ -349,7 +347,6 @@ int x11_get_front_sensor_name(char *sensor_name)
 		return -EINVAL;
 }
 EXPORT_SYMBOL(x11_get_front_sensor_name);
-#endif
 
 /**
   * msm_eeprom_match_crc - verify multiple regions using crc
@@ -572,11 +569,9 @@ static int read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl,
 {
 	int rc = 0;
 	int j;
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 	int delay;
 	char out[4];
 	uint32_t temp;
-#endif
 	struct msm_eeprom_memory_map_t *emap = block->map;
 	struct msm_eeprom_board_info *eb_info;
 	uint8_t *memptr = block->mapdata;
@@ -596,8 +591,6 @@ static int read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl,
 			pr_err("qcom,slave-addr = 0x%X\n",
 				eb_info->i2c_slaveaddr);
 		}
-
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 		if (emap[j].page.valid_size &&
 				eb_info->i2c_slaveaddr == EEPROM_ONSEMI_ADDR) {
 			temp = htonl(emap[j].page.data);
@@ -613,19 +606,12 @@ static int read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl,
 				return rc;
 			}
 		} else if (emap[j].page.valid_size) {
-#else
-		if (emap[j].page.valid_size) {
-#endif
 			e_ctrl->i2c_client.addr_type = emap[j].page.addr_t;
 			rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
 				&(e_ctrl->i2c_client), emap[j].page.addr,
 				emap[j].page.data, emap[j].page.data_t);
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 				delay = emap[j].page.delay * 1000;
 				usleep_range(delay, delay + 100);
-#else
-				msleep(emap[j].page.delay);
-#endif
 			if (rc < 0) {
 				pr_err("%s: page write failed\n", __func__);
 				return rc;
@@ -636,12 +622,8 @@ static int read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl,
 			rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_write(
 				&(e_ctrl->i2c_client), emap[j].pageen.addr,
 				emap[j].pageen.data, emap[j].pageen.data_t);
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 				delay = emap[j].pageen.delay;
 				usleep_range(delay, delay + 100);
-#else
-				msleep(emap[j].pageen.delay);
-#endif
 			if (rc < 0) {
 				pr_err("%s: page enable failed\n", __func__);
 				return rc;
@@ -652,12 +634,8 @@ static int read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl,
 			rc = e_ctrl->i2c_client.i2c_func_tbl->i2c_poll(
 				&(e_ctrl->i2c_client), emap[j].poll.addr,
 				emap[j].poll.data, emap[j].poll.data_t);
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 				delay = emap[j].poll.delay;
 				usleep_range(delay, delay + 100);
-#else
-				msleep(emap[j].poll.delay);
-#endif
 			if (rc < 0) {
 				pr_err("%s: poll failed\n", __func__);
 				return rc;
@@ -686,10 +664,8 @@ static int read_eeprom_memory(struct msm_eeprom_ctrl_t *e_ctrl,
 			}
 		}
 	}
-#ifdef CONFIG_MACH_XIAOMI_MSM8992
 	x7_set_sensor_name(e_ctrl, block->mapdata);
 	x11_set_sensor_name(e_ctrl, block->mapdata);
-#endif
 	return rc;
 }
 /**
@@ -1166,7 +1142,7 @@ static int msm_eeprom_spi_remove(struct spi_device *sdev)
 static int eeprom_config_read_cal_data32(struct msm_eeprom_ctrl_t *e_ctrl,
 	void __user *arg)
 {
-	int rc = -EINVAL;
+	int rc;
 	uint8_t *ptr_dest = NULL;
 	struct msm_eeprom_cfg_data32 *cdata32 =
 		(struct msm_eeprom_cfg_data32 *) arg;
