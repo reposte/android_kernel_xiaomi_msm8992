@@ -1,10 +1,6 @@
 /*
-<<<<<<< HEAD
- * Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
  * Copyright (C) 2016 XiaoMi, Inc.
-=======
- * Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
->>>>>>> LA.BF64.1.2.3-00710-8x92.0
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
